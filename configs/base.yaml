@@ -1,0 +1,30 @@
+# Один конфиг на все четыре прогона.
+# Меняется между ними ровно один аргумент --level.
+
+seed: 1337          # инициализация весов и порядок данных
+split_seed: 42      # разбиение картинок на train/val/test
+eval_seed: 999      # заморозка валидации и теста
+
+out_dir: experiments
+
+data:
+  root: data/clean
+  crop_px: 128            # сторона квадрата
+  d_over_r0_range: [1.0, 5.0] #!!!!!!!Предварительно, потом замеры
+  samples_per_image: 8    # сколько кропов с картинки за эпоху
+  val_frac: 0.05
+  test_frac: 0.10
+
+degradation:
+  diffraction_fwhm_px: 2.0   #!!!!!!Потом замер пикселей на идеальное пятно
+
+model:
+  channels: 1
+  width: 32
+  depth: 4
+
+train:
+  epochs: 60
+  batch_size: 32
+  lr: 0.0003
+  num_workers: 8
