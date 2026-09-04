@@ -80,7 +80,8 @@ def main():
 
     # --- данные ------------------------------------------------------------
     deg = LEVELS[args.level](
-        diffraction_fwhm_px=cfg["degradation"]["diffraction_fwhm_px"])
+        diffraction_fwhm_px=cfg["degradation"]["diffraction_fwhm_px"],
+        margin_px=d["margin_px"])
 
     tr, va, _ = split_indices(d["tiles"], d["val_frac"], d["test_frac"],
                               cfg["split_seed"])
@@ -89,7 +90,7 @@ def main():
         # фотографии и проверка станет слишком лёгкой
         tr = tr[:: max(1, len(tr) // args.overfit)][: args.overfit]
 
-    kw = dict(crop_px=d["crop_px"], d_over_r0_range=tuple(d["d_over_r0_range"]))
+    kw = dict(crop_px=d["crop_px"], margin_px=d["margin_px"],                                                 d_over_r0_range=tuple(d["d_over_r0_range"]))
     # В режиме --overfit обучающий набор тоже заморожен: смысл проверки в том,
     # чтобы сеть выучила КОНКРЕТНЫЕ примеры. С живым DegradedPairs кропы
     # менялись бы каждую эпоху и лосс никогда не ушёл бы в ноль.

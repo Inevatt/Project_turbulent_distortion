@@ -15,9 +15,10 @@ class Degradation(ABC):
     """
 
     name = "base"
-
-    def __init__(self, diffraction_fwhm_px=2.0):
+    
+    def __init__(self, diffraction_fwhm_px=2.0, margin_px=16):
         self.diffraction_fwhm_px = float(diffraction_fwhm_px)
+        self.margin_px = int(margin_px)
 
     @abstractmethod
     def __call__(self, img, d_over_r0, rng):
