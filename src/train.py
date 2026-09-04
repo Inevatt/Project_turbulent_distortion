@@ -47,13 +47,12 @@ import yaml
 from torch.utils.data import DataLoader
 
 from .data import DegradedPairs, FrozenDegraded, split_indices
-from .distortion.d0 import D0Gaussian
+from .distortion import LEVELS   # реестр один на train.py и eval_matrix.py
 from .metrics import psnr, ssim
 from .unet import UNet
 
 # Уровень выбирается строкой, никаких if по уровням в коде обучения.
 # D1-D3 добавляются одной строкой каждый.
-LEVELS = {"d0": D0Gaussian}
 
 
 def main():
@@ -181,7 +180,7 @@ def main():
         t0, loss_sum, seen = time.time(), 0.0, 0
         lr_epoch = opt.param_groups[0]["lr"]   # с чем эпоха шла, а не следующий
 
-        for degraded, clean, _d_over_r0 in train_dl:   # третий элемент только в лог
+        for degraded, clean, _d_over_r0 in train_dl:   # D/r0 в обучении не нужен, см. докстринг
             degraded = degraded.to(device, non_blocking=pin)
             clean = clean.to(device, non_blocking=pin)
             loss = loss_fn(net(degraded), clean)
