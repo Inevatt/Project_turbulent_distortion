@@ -15,7 +15,7 @@ data:
   samples_per_tile: 1     # было samples_per_image: 8
   val_frac: 0.05
   test_frac: 0.10
-  margin_px: 16
+  margin_px: 32
 
 degradation:
   diffraction_fwhm_px: 2.0   #!!!!!!Потом замер пикселей на идеальное пятно
@@ -23,7 +23,7 @@ degradation:
 model:
   channels: 1
   base: 48
-  depth: 4
+  depth: 3
 
 train:
   epochs: 60

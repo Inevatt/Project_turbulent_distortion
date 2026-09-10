@@ -16,10 +16,12 @@ class Degradation(ABC):
 
     name = "base"
     
-    def __init__(self, diffraction_fwhm_px=2.0, margin_px=16):
+    def __init__(self, diffraction_fwhm_px):
         self.diffraction_fwhm_px = float(diffraction_fwhm_px)
-        self.margin_px = int(margin_px)
 
     @abstractmethod
-    def __call__(self, img, d_over_r0, rng):
-        ...
+    def support_radius_px(self, d_over_r0):
+        """Насколько далеко тянется ядро, px. Монотонна по d_over_r0."""
+
+    @abstractmethod
+    def __call__(self, img, d_over_r0, rng): ...

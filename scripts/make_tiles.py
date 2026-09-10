@@ -49,6 +49,11 @@ def grid(h, w):
 
 def main():
     cfg = yaml.safe_load(open("configs/base.yaml", encoding="utf-8"))
+
+    need = cfg["data"]["crop_px"] + 2 * cfg["data"]["margin_px"]
+    if need > TILE:
+        raise ValueError(f"тайл {TILE} меньше окна {need} = crop_px + 2*margin_px")
+
     paths = list_images(cfg["data"]["root"])
 
     # проход 1: сколько всего тайлов. Image.open читает только заголовок,
@@ -63,9 +68,14 @@ def main():
     print(f"{len(paths)} изображений -> {total} тайлов "
           f"({total * TILE * TILE / 1e9:.2f} ГБ)")
 
-    # проход 2: заполнение. open_memmap пишет прямо на диск,
+        # проход 2: заполнение. open_memmap пишет прямо на диск,
     # в оперативке ни один момент не лежит больше одной картинки
     OUT.mkdir(parents=True, exist_ok=True)
+    # source_id.npy пишется последним и работает маркером завершения. Старый
+    # снимается здесь: иначе оборванный повторный прогон оставит новый
+    # недописанный tiles.npy рядом со старым source_id, и split_indices
+    # молча разложит тайлы по чужим фотографиям.
+    (OUT / "source_id.npy").unlink(missing_ok=True)
     tiles = np.lib.format.open_memmap(
         OUT / "tiles.npy", mode="w+", dtype=np.uint8, shape=(total, TILE, TILE)
     )

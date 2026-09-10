@@ -75,13 +75,18 @@ def main():
     epochs = int(t["epochs"]) if args.epochs is None else args.epochs
     overfit = args.overfit > 0
 
+    # margin_px одинаков на всех уровнях и покрывает носитель каждого при
+    # максимальном D/r0. Носитель монотонен по D/r0, хватает верхней границы.
+    f0, dmax = cfg["degradation"]["diffraction_fwhm_px"], d["d_over_r0_range"][1]
+    need = max(c(f0).support_radius_px(dmax) for c in LEVELS.values())
+    if not (need <= d["margin_px"], f"margin_px={d['margin_px']}, нужно {need}"):
+        raise("Ошибка в margin train.py")
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.backends.cudnn.benchmark = True   # формы фиксированы, подбор алгоритмов бесплатен
 
     # --- данные ------------------------------------------------------------
-    deg = LEVELS[args.level](
-        diffraction_fwhm_px=cfg["degradation"]["diffraction_fwhm_px"],
-        margin_px=d["margin_px"])
+    deg = LEVELS[args.level](f0)
 
     tr, va, _ = split_indices(d["tiles"], d["val_frac"], d["test_frac"],
                               cfg["split_seed"])
@@ -136,7 +141,7 @@ def main():
     loss_fn = torch.nn.L1Loss()
 
     # --- каталог прогона ---------------------------------------------------
-    run = Path(cfg["out_dir"]) / args.level
+    run = Path(cfg["out_dir"]) / (args.level + "-overfit" if overfit or args.epochs else args.level)
     run.mkdir(parents=True, exist_ok=True)
     ckpt_path, log_path = run / "last.pt", run / "log.csv"
 
