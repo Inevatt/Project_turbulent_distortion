@@ -11,8 +11,9 @@ train.py и eval_matrix.py импортируют LEVELS отсюда: два н
 
 from .d0 import D0Gaussian
 from .d1 import D1TipTilt
+from .d2 import D2Kolmogorov
 
-_CLASSES = (D0Gaussian, D1TipTilt)          # D1-D3 добавляются одной строкой каждый
+_CLASSES = (D0Gaussian, D1TipTilt, D2Kolmogorov)   # D3 добавляется одной строкой
 
 LEVELS = {c.name: c for c in _CLASSES}
 

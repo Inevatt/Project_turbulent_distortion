@@ -3,6 +3,7 @@ import numpy as np
 # FWHM = 2*sqrt(2*ln2) * sigma
 FWHM_TO_SIGMA = 1.0 / (2.0 * np.sqrt(2.0 * np.log(2.0)))   # ≈ 0.4247
 TRUNCATE = 4.0   # зафиксировано явно, а не унаследовано от дефолта scipy
+AIRY_FWHM = 1.028   # FWHM пятна Айри в единицах lambda/D
 TILT_SHARE = 0.9    # доля потолка σ²_atm, уходящая в дрожание при D/r₀ = 1
 TILT_CLIP  = 4.0    # обрезка сдвига, в сигмах
 
@@ -18,6 +19,17 @@ def width_fwhm_px(d_over_r0, diffraction_fwhm_px):
 def width_sigma(d_over_r0, diffraction_fwhm_px):
     """То же самое в единицах, которые принимает гауссов фильтр."""
     return width_fwhm_px(d_over_r0, diffraction_fwhm_px) * FWHM_TO_SIGMA
+
+
+def lambda_over_d_px(diffraction_fwhm_px):
+    """Дифракционный масштаб lambda/D в пикселях.
+
+    Единственный мост между углами и пиксельной сеткой. D0 и D1 живут
+    в пикселях и его не видят, D2 и D3 строят PSF в углах и без него
+    не смогут попасть в ту же сетку. Поэтому он здесь, а не в d2.py:
+    иначе появятся два числа, обязанных быть согласованными.
+    """
+    return diffraction_fwhm_px / AIRY_FWHM
 
 def sigma_pair(d_over_r0, diffraction_fwhm_px):
     """Разделение усреднённого пятна на остаточное размытие и дрожание кадра.
@@ -59,5 +71,3 @@ def gaussian_radius_px(sigma, truncate=TRUNCATE):
     а не обнаруживался по краевым артефактам после обучения.
     """
     return int(truncate * sigma + 0.5)
-
-
