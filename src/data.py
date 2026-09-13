@@ -9,7 +9,8 @@
 Каждый пример получает два независимых генератора: один выбирает кроп,
 другой разыгрывает искажение. Поэтому все четыре уровня видят одни
 и те же куски одних и тех же картинок, сколько бы случайных чисел
-ни потратил конкретный генератор искажения.
+ни потратил конкретный генератор искажения. С точностью до целого
+сдвига: уровни с наклоном смещают окно таргета, см. ниже.
 
 Кроп берётся с запасом margin_px с каждой стороны, портится целиком
 и только потом обрезается до crop_px. Иначе краевой пиксель получает
@@ -21,6 +22,14 @@
 
 margin_px обязан быть одинаковым на всех четырёх уровнях и покрывать
 носитель ядра при максимальном D/r0
+
+Уровень возвращает применённый сдвиг, и окно таргета смещается на его
+целую часть. Иначе один и тот же вход встречался бы с таргетами,
+сдвинутыми на разные величины (сдвиг из кадра невосстановим), и лосс
+увёл бы сеть к их смеси — то есть научил размывать выход везде.
+Берётся ровно целая часть: дробный сдвиг чистой картинки потребовал бы
+интерполяции, а размытый эталон хуже любого рассогласования. Остаётся
+<= 0.5 px на ось, против размытия sigma >= 0.89 px это уже не решает.
 """
 
 from pathlib import Path
@@ -74,7 +83,7 @@ class DegradedPairs(Dataset):
         indices,
         degradation,
         margin_px,
-        crop_px=128,          
+        crop_px=128,
         d_over_r0_range=(1.0, 5.0),
         seed=1337,
         samples_per_tile=1,
@@ -88,7 +97,6 @@ class DegradedPairs(Dataset):
         self.samples_per_tile = int(samples_per_tile)
         self.epoch = 0
         self.tiles = np.load(Path(tiles_dir) / "tiles.npy", mmap_mode="r")
-
 
     def set_epoch(self, epoch):
         self.epoch = int(epoch)
@@ -106,17 +114,25 @@ class DegradedPairs(Dataset):
         big = np.asarray(big, dtype=np.float32) / 255.0  # копия из memmap
         d_over_r0 = float(rng_crop.uniform(self.d_lo, self.d_hi))
 
-        # Центр вырезается ДО вызова deg: контракт не запрещает генератору
-        # писать в свой вход, а big — источник не только входа, но и таргета.
-        sl = slice(m, m + n)
-        clean = big[sl, sl].copy()
+        # big — источник и входа, и таргета, а таргет вырезается уже после
+        # вызова. Генератор, пишущий по своему входу, упадёт здесь, а не
+        # испортит таргеты молча.
+        big.flags.writeable = False
 
         # поток 2: реализация искажения — своя на каждом уровне
         rng_deg = _rng(self.seed, self.epoch, idx, 2)
-        degraded = self.deg(big, d_over_r0, rng_deg)[sl, sl]
+        degraded, shift = self.deg(big, d_over_r0, rng_deg)
+
+        # Содержимое уехало на shift, значит в центре испорченного кадра
+        # лежит то, что в big было на shift выше и левее. Границы проверять
+        # не нужно: |round(shift)| <= support_radius_px <= margin_px, и это
+        # неравенство train.py уже проверяет перед запуском.
+        sl = slice(m, m + n)
+        oy, ox = (int(round(v)) for v in shift)
+        clean = big[m - oy : m - oy + n, m - ox : m - ox + n]
 
         return (
-            np.expand_dims(degraded, axis=0).astype(np.float32),
+            np.expand_dims(degraded[sl, sl], axis=0).astype(np.float32),
             np.expand_dims(clean, axis=0).astype(np.float32),
             np.float32(d_over_r0),
         )

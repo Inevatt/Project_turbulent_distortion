@@ -12,10 +12,6 @@ class D0Gaussian(Degradation):
         return gaussian_radius_px(width_sigma(d_over_r0, self.diffraction_fwhm_px))
 
     def __call__(self, img, d_over_r0, rng):
-        """rng не нужен: усреднённое пятно — детерминированная свёртка.
-        Аргумент есть ради общего контракта, поток 2 всё равно изолирован."""
         sigma = width_sigma(d_over_r0, self.diffraction_fwhm_px)
         out = gaussian_filter(img, sigma=sigma, mode="reflect", truncate=TRUNCATE)
-        return np.clip(out, 0.0, 1.0).astype(np.float32)
-
-
+        return out.astype(np.float32), (0.0, 0.0)

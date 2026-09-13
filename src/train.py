@@ -79,8 +79,8 @@ def main():
     # максимальном D/r0. Носитель монотонен по D/r0, хватает верхней границы.
     f0, dmax = cfg["degradation"]["diffraction_fwhm_px"], d["d_over_r0_range"][1]
     need = max(c(f0).support_radius_px(dmax) for c in LEVELS.values())
-    if not (need <= d["margin_px"], f"margin_px={d['margin_px']}, нужно {need}"):
-        raise("Ошибка в margin train.py")
+    if need > d["margin_px"]:
+        raise SystemExit(f"margin_px={d['margin_px']}, нужно {need}")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.backends.cudnn.benchmark = True   # формы фиксированы, подбор алгоритмов бесплатен
