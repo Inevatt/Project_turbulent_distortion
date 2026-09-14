@@ -4,7 +4,7 @@ import numpy as np
 FWHM_TO_SIGMA = 1.0 / (2.0 * np.sqrt(2.0 * np.log(2.0)))   # ≈ 0.4247
 TRUNCATE = 4.0   # зафиксировано явно, а не унаследовано от дефолта scipy
 AIRY_FWHM = 1.028   # FWHM пятна Айри в единицах lambda/D
-TILT_SHARE = 0.9    # доля потолка σ²_atm, уходящая в дрожание при D/r₀ = 1
+TILT_SHARE = 0.9531    # доля потолка σ²_atm, уходящая в дрожание при D/r₀ = 1
 TILT_CLIP  = 4.0    # обрезка сдвига, в сигмах
 
 def width_fwhm_px(d_over_r0, diffraction_fwhm_px):
