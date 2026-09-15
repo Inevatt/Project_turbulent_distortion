@@ -13,8 +13,10 @@ from .d0 import D0Gaussian
 from .d1 import D1TipTilt
 from .d2 import D2Kolmogorov
 from .d3 import D3Anisoplanatic
+from .d15 import D15LowOrder
+from .d3n import D3Noise
 
-_CLASSES = (D0Gaussian, D1TipTilt, D2Kolmogorov, D3Anisoplanatic)
+_CLASSES = (D0Gaussian, D1TipTilt, D15LowOrder, D2Kolmogorov, D3Anisoplanatic, D3Noise)
 
 LEVELS = {c.name: c for c in _CLASSES}
 

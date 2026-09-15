@@ -61,6 +61,8 @@ def main():
     ap.add_argument("--config", default="configs/base.yaml")
     ap.add_argument("--resume", action="store_true",
                     help="продолжить с last.pt (инстанс AutoDL могут погасить)")
+    ap.add_argument("--force", action="store_true",
+                    help="затереть готовый прогон в out_dir/level")
     ap.add_argument("--overfit", type=int, default=0, metavar="N",
                     help="ОТЛАДКА: обучаться на N замороженных тайлах без валидации")
     ap.add_argument("--epochs", type=int, default=None,
@@ -83,7 +85,11 @@ def main():
         raise SystemExit(f"margin_px={d['margin_px']}, нужно {need}")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    torch.backends.cudnn.benchmark = True   # формы фиксированы, подбор алгоритмов бесплатен
+    # benchmark выбирает алгоритм свёртки по замерам в рантайме, а замеры
+    # шумные: две реплики с разными сидами могли бы взять разные ядра, и часть
+    # разброса между ними объяснилась бы не сидом. Вся кампания держится на
+    # том, что разброс есть эффект сида и только его.
+    torch.backends.cudnn.benchmark = False
 
     # --- данные ------------------------------------------------------------
     deg = LEVELS[args.level](f0)
@@ -163,8 +169,12 @@ def main():
         # Лог перезаписывается, а не дописывается. Иначе строки от прошлого
         # прогона с другим конфигом молча смешаются с новыми, и по log.csv
         # уже не понять, чем посчитана эта строка матрицы.
-        if ckpt_path.exists():
-            print(f"ВНИМАНИЕ: перезаписываю прошлый прогон в {run}")
+        # Реальный сценарий: цепочка уровней на карте оборвалась, её
+        # перезапускают с начала — и уже готовые уровни молча стираются.
+        # На пяти картах печать тонет в перемешанном выводе, поэтому отказ.
+        if ckpt_path.exists() and not args.force:
+            raise SystemExit(f"{ckpt_path} уже есть: --resume чтобы продолжить, "
+                             f"--force чтобы затереть")
         log_path.write_text("epoch,step,lr,train_l1,val_psnr,val_ssim,sec\n",
                             encoding="utf-8")
 

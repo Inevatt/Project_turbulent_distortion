@@ -24,6 +24,8 @@ from PIL import Image
 
 IMG_EXT = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 TILE = 256
+PER_IMAGE = 15        # тайлов с одной картинки; 0 — брать всю сетку
+GRID_SEED = 20260915
 OUT = Path("data/tiles")
 
 
@@ -36,14 +38,30 @@ def list_images(root):
     return files
 
 
-def grid(h, w):
+def grid(h, w, i):
     """Левые верхние углы тайлов. Шаг равен размеру тайла: перекрытия нет,
-    остаток по краям отбрасывается. Картинка меньше TILE даёт пустой список."""
-    return [
+    остаток по краям отбрасывается. Картинка меньше TILE даёт пустой список.
+
+    PER_IMAGE: с картинки берётся подвыборка сетки, а не вся сетка. Тайлы
+    одной фотографии почти не добавляют независимости, поэтому при равном
+    общем числе примеров выгоднее взять больше фотографий по чуть-чуть:
+    столько же тайлов и тот же бюджет шагов, но вчетверо больше сцен
+    и вчетверо больше исходных картинок в тестовом сплите.
+
+    Подвыборка детерминирована от НОМЕРА картинки: grid вызывается дважды,
+    в проходе счёта и в проходе заполнения, и оба обязаны вернуть одно и то
+    же. Общий генератор на весь запуск разошёлся бы между проходами, и
+    tiles.npy молча заполнился бы не теми кусками.
+    """
+    g = [
         (y, x)
         for y in range(0, h - TILE + 1, TILE)
         for x in range(0, w - TILE + 1, TILE)
     ]
+    if PER_IMAGE and len(g) > PER_IMAGE:
+        rng = np.random.default_rng([GRID_SEED, i])
+        g = [g[k] for k in sorted(rng.choice(len(g), PER_IMAGE, replace=False))]
+    return g
 
 
 def main():
@@ -58,9 +76,9 @@ def main():
     # проход 1: сколько всего тайлов. Image.open читает только заголовок,
     # декодирования здесь нет, поэтому проход почти бесплатный
     total = 0
-    for p in paths:
+    for i, p in enumerate(paths):
         w, h = Image.open(p).size
-        total += len(grid(h, w))
+        total += len(grid(h, w, i))
     if total == 0:
         raise ValueError(f"ни одна картинка не больше {TILE}x{TILE}")
 
@@ -84,7 +102,7 @@ def main():
     for i, p in enumerate(paths):
         img = np.asarray(Image.open(p).convert("L"), dtype=np.uint8)
         h, w = img.shape
-        for y, x in grid(h, w):
+        for y, x in grid(h, w, i):
             tiles[k] = img[y : y + TILE, x : x + TILE]
             source_id[k] = i
             k += 1

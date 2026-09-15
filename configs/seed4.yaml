@@ -1,11 +1,11 @@
 # Один конфиг на все четыре прогона.
 # Меняется между ними ровно один аргумент --level.
 
-seed: 1337          # инициализация весов и порядок данных
-split_seed: 42      # разбиение картинок на train/val/test
+seed: 4000          # инициализация весов и порядок данных
+split_seed: 45      # разбиение картинок на train/val/test
 eval_seed: 999      # заморозка валидации и теста
 
-out_dir: experiments
+out_dir: experiments_s4
 
 data:
   root: data/clean        # исходные PNG, нужен только make_tiles
@@ -29,4 +29,4 @@ train:
   epochs: 60
   batch_size: 32
   lr: 0.0003
-  num_workers: 8
+  num_workers: 10

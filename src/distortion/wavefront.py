@@ -40,10 +40,7 @@ zernike[..., 2:] — в размытие.
   K_MODES. У авторов 36. Это мало: при 36 модах средняя OTF полной
   фазы идёт выше H_LE Фрида на 13% при D/r0 = 5 и на 15% при D/r0 = 3,
   то есть D2 оказывается слабее, чем заявленный D/r0, а D/r0 — общая
-  ось всех четырёх уровней. При 105 модах (все радиальные порядки
-  до 13) отклонение падает до 1-2% на всём диапазоне. При 231 моде
-  лучше не становится: сетка зрачка 66 ячеек перестаёт разрешать
-  высокие порядки, и ортогональность базиса плывёт на 14%.
+  ось всех четырёх уровней
 
   N_GRID. Связь жёсткая: lambda/D в пикселях = N_GRID / диаметр
   зрачка в ячейках, то есть паддинг зрачка задаёт масштаб. При
@@ -200,7 +197,7 @@ class Kolmogorov:
         """Сдвиг кадра (dy, dx) из наклонных мод. a_2 — по x, a_3 — по y."""
         return self.px_per_rad * a[1], self.px_per_rad * a[0]
 
-    def psf(self, a, radius):
+    def psf(self, a, radius, sigma_px = 0.0):
         """Ядро (2r+1, 2r+1), сумма 1, центр реализации сдвинут на shift_px(a).
 
         Наклон оставлен внутри фазы: FFT сдвигает пятно на сетке ТОЧНО,
@@ -210,7 +207,12 @@ class Kolmogorov:
         """
         u = np.zeros((self.n_grid, self.n_grid), dtype=np.complex128)
         u[self.mask] = np.exp(1j * (a @ self.basis))
-        h = np.fft.fftshift(np.abs(np.fft.fft2(u)) ** 2)
+        h = np.abs(np.fft.fft2(u)) ** 2
+        if sigma_px:
+            f2 = np.fft.fftfreq(self.n_grid) ** 2
+            g = np.exp(-2.0 * (np.pi * sigma_px) ** 2 * (f2[:, None] + f2))
+            h = np.fft.ifft2(np.fft.fft2(h) * g).real
+        h = np.fft.fftshift(h)
         c = self.n_grid // 2
         h = h[c - radius:c + radius + 1, c - radius:c + radius + 1]
         return h / h.sum()
