@@ -22,7 +22,7 @@ SEEDS = [42, 43, 44, 45, 46]        # как в configs/s1..s5.yaml
 
 
 def main():
-    cfg = yaml.safe_load(open("configs/base.yaml", encoding="utf-8"))
+    cfg = yaml.safe_load(open("configs/seed1.yaml", encoding="utf-8"))
     d, t = cfg["data"], cfg["train"]
 
     source_id = np.load(Path(d["tiles"]) / "source_id.npy")

@@ -58,7 +58,7 @@ from .unet import UNet
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--level", required=True, choices=sorted(LEVELS))
-    ap.add_argument("--config", default="configs/base.yaml")
+    ap.add_argument("--config", default="configs/seed1.yaml")
     ap.add_argument("--resume", action="store_true",
                     help="продолжить с last.pt (инстанс AutoDL могут погасить)")
     ap.add_argument("--force", action="store_true",
@@ -90,6 +90,7 @@ def main():
     # разброса между ними объяснилась бы не сидом. Вся кампания держится на
     # том, что разброс есть эффект сида и только его.
     torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
 
     # --- данные ------------------------------------------------------------
     deg = LEVELS[args.level](f0)

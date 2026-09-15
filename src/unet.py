@@ -99,12 +99,17 @@ class UNet(nn.Module):
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
 
-        #Голову нужно отдельно, така как kaiming ждёт, что после слоя идет Relu
-        nn.init.normal_(self.head.weight, std=0.01)
-        nn.init.constant_(self.head.bias, 0.5)
+        # Голова обнуляется, а не инициализируется малым случайным: тогда
+        # до первого шага model(x) == x ТОЧНО, и тождество проверяется
+        # архитектурно, а не по поведению первой эпохи. Trunk простаивает
+        # ровно один шаг из 82440 — голова получает градиент сразу, потому
+        # что вход в неё ненулевой.
+        nn.init.zeros_(self.head.weight)
+        nn.init.zeros_(self.head.bias)
 
     def forward(self, x):
         h, w = x.shape[-2:]
+        inp = x                          # ДО паддинга: к нему прибавляется остаток
         mult = 2 ** self.depth
         pad_h, pad_w = (-h) % mult, (-w) % mult
         if pad_h or pad_w:
@@ -118,7 +123,7 @@ class UNet(nn.Module):
         for up, skip in zip(self.ups, reversed(feats[:-1])):
             y = up(y, skip)
 
-        return self.head(y)[..., :h, :w]
+        return inp + self.head(y)[..., :h, :w]
 
 
 def receptive_field(depth=3):
@@ -151,3 +156,5 @@ if __name__ == "__main__":
     for size in (128, 135, 256):
         y = net(torch.zeros(2, 1, size, size))
         print(f"вход {size}x{size} -> выход {tuple(y.shape)}")
+    x = torch.rand(2, 1, 128, 128)
+    print(f"|model(x) - x| max = {(net(x) - x).abs().max():.2e}   (ожидается 0)")
