@@ -252,55 +252,56 @@ class DenseZernikeSampler:
         self._var_cache[n] = v
         return v
 
-    def _draw_mixed_coarse(self, n, rng):
-        """Draw the joint Noll field only on the internal FFT grid.
+    def _draw_blocks_coarse(self, n, rng, group_ids):
+        """Draw selected independent Noll blocks on the internal FFT grid.
 
-        This is the same latent Gaussian construction as ``sample`` but all
-        spatial interpolation is postponed until we know which outputs D3
-        actually needs.  White noise is still drawn block-by-block in the
-        same order as before; FFTs are batched only for speed.
+        Used only for the two blocks containing j=2 and j=3 in production.
+        Other independent blocks are marginalized directly to the PSF-anchor
+        locations, so their unused dense spatial samples are never generated.
         """
         n = int(n)
         g, _ = self._geometry(n)
         m = self._embed_size(n)
         spectral_root = self._spectrum_root(n)
-
-        # Keep the historical RNG consumption/order exactly: each covariance
-        # block gets its own standard_normal call.  The only optimization is
-        # that the 2-D FFT itself is executed as one batched transform.
-        white = np.empty((self.n_coeff, m, m), dtype=np.float32)
-        spans = []
-        off = 0
-        for idx in self.groups:
+        out = {}
+        for gi in group_ids:
+            idx = self.groups[gi]
+            modal_root = self.block_roots[gi]
             b = len(idx)
-            white[off:off + b] = rng.standard_normal((b, m, m), dtype=np.float32)
-            spans.append((idx, slice(off, off + b)))
-            off += b
+            white = rng.standard_normal((b, m, m), dtype=np.float32)
+            spec = sfft.rfft2(white, axes=(-2, -1)) * spectral_root[None, :, :]
+            latent = sfft.irfft2(spec, s=(m, m), axes=(-2, -1))[:, :g, :g]
+            latent = latent.astype(np.float32, copy=False)
+            mixed = modal_root @ latent.reshape(b, -1)
+            out[gi] = mixed.reshape(b, g, g).astype(np.float32, copy=False)
+        return out
 
-        spec = sfft.rfft2(white, axes=(-2, -1)) * spectral_root[None, :, :]
-        latent = sfft.irfft2(spec, s=(m, m), axes=(-2, -1))[:, :g, :g]
-        latent = latent.astype(np.float32, copy=False)
-
+    def _draw_mixed_coarse(self, n, rng):
+        """Reference full-field construction retained for diagnostics/tests."""
+        n = int(n)
+        g, _ = self._geometry(n)
+        m = self._embed_size(n)
+        spectral_root = self._spectrum_root(n)
         mixed = np.empty((self.n_coeff, g, g), dtype=np.float32)
-        for (idx, sl), modal_root in zip(spans, self.block_roots):
+        for idx, modal_root in zip(self.groups, self.block_roots):
             b = len(idx)
-            mixed[idx] = (modal_root @ latent[sl].reshape(b, -1)).reshape(b, g, g)
+            white = rng.standard_normal((b, m, m), dtype=np.float32)
+            spec = sfft.rfft2(white, axes=(-2, -1)) * spectral_root[None, :, :]
+            latent = sfft.irfft2(spec, s=(m, m), axes=(-2, -1))[:, :g, :g]
+            latent = latent.astype(np.float32, copy=False)
+            mixed[idx] = (modal_root @ latent.reshape(b, -1)).reshape(b, g, g)
         return mixed
 
     def _sample_regular_via_dense(self, coarse, n, out_g):
         """Match ``_bilinear_resize(..., n)`` + variance correction +
         regular sampling, without materializing the full dense coefficient
         stack.
-
-        Only the dense pixels touched by the final ``out_g x out_g`` anchor
-        grid are evaluated.  This is algebraically the same linear operation
-        used by the old D3 path.
         """
         coarse = np.asarray(coarse, dtype=np.float32)
         c, g, g2 = coarse.shape
         n, out_g = int(n), int(out_g)
         if g != g2 or n < 2 or out_g < 2:
-            raise ValueError('invalid coarse/dense sampling geometry')
+            raise ValueError("invalid coarse/dense sampling geometry")
 
         qd = np.linspace(0.0, n - 1.0, out_g, dtype=np.float32)
         d0 = np.floor(qd).astype(np.intp)
@@ -308,8 +309,6 @@ class DenseZernikeSampler:
         td = qd - d0
         ids = np.unique(np.concatenate([d0, d1]))
 
-        # Evaluate the original coarse->dense bilinear interpolation only at
-        # the dense rows/columns that the subsequent anchor sampler touches.
         qc = ids.astype(np.float32) * np.float32((g - 1) / (n - 1))
         c0 = np.floor(qc).astype(np.intp)
         c1 = np.minimum(c0 + 1, g - 1)
@@ -330,54 +329,171 @@ class DenseZernikeSampler:
             + yy[:, :, p1] * td[None, None, :]
         ).astype(np.float32, copy=False)
 
-    def sample_for_d3(self, n, d_over_r0, rng, high_grid):
-        """Draw exactly the coefficient data consumed by D3.
+    def _anchor_sparse_weights(self, n, out_g):
+        """Sparse coarse-grid weights for the exact legacy anchor sampler.
 
-        Returns ``(tilt_dense, high_anchor)`` where ``tilt_dense`` has shape
-        ``(2,n,n)`` for j=2,3 and ``high_anchor`` has shape
-        ``(K-3, high_grid, high_grid)`` for j=4..K.  Relative to constructing
-        all 230 dense planes first, this removes the large temporary array but
-        preserves the same Gaussian/Noll realization and the same numerical
-        interpolation at the PSF anchor locations.
+        Returns one dict per output anchor.  Applying these weights to a
+        coarse latent field is algebraically identical to
+        ``_sample_regular_via_dense`` for a single channel.
         """
-        n = int(n)
-        dr = float(d_over_r0)
-        high_grid = int(high_grid)
-        if n <= 0:
-            raise ValueError('n must be positive')
-        if high_grid < 2:
-            raise ValueError('high_grid must be >= 2')
-        if not np.isfinite(dr) or dr <= 0.0:
-            raise ValueError('d_over_r0 must be positive and finite')
+        n, out_g = int(n), int(out_g)
+        g, _ = self._geometry(n)
+        inv_std = 1.0 / np.sqrt(self._interp_variance(n))
+        qd = np.linspace(0.0, n - 1.0, out_g, dtype=np.float64)
 
+        anchors = []
+        for ya in qd:
+            y0 = int(np.floor(ya)); y1 = min(y0 + 1, n - 1); ty = ya - y0
+            yd = ((y0, 1.0 - ty), (y1, ty))
+            for xa in qd:
+                x0 = int(np.floor(xa)); x1 = min(x0 + 1, n - 1); tx = xa - x0
+                xd = ((x0, 1.0 - tx), (x1, tx))
+                weights = {}
+                for yy, wy in yd:
+                    if wy == 0.0:
+                        continue
+                    qy = yy * (g - 1) / (n - 1)
+                    cy0 = int(np.floor(qy)); cy1 = min(cy0 + 1, g - 1); fy = qy - cy0
+                    yc = ((cy0, 1.0 - fy), (cy1, fy))
+                    for xx, wx in xd:
+                        if wx == 0.0:
+                            continue
+                        qx = xx * (g - 1) / (n - 1)
+                        cx0 = int(np.floor(qx)); cx1 = min(cx0 + 1, g - 1); fx = qx - cx0
+                        xc = ((cx0, 1.0 - fx), (cx1, fx))
+                        outer = wy * wx * float(inv_std[yy, xx])
+                        for cy, wcy in yc:
+                            if wcy == 0.0:
+                                continue
+                            for cx, wcx in xc:
+                                if wcx == 0.0:
+                                    continue
+                                key = (cy, cx)
+                                weights[key] = weights.get(key, 0.0) + outer * wcy * wcx
+                anchors.append(weights)
+        return anchors
+
+    def _anchor_spatial_root(self, n, out_g):
+        """Spatial covariance root at PSF anchors under the legacy sampler.
+
+        This is the exact Gaussian marginal of the previous FFT-field path at
+        the only high-order locations D3 consumes.  Sampling from it therefore
+        changes no distribution used by D3; it merely integrates out unused
+        coarse/dense pixels for Noll blocks independent of tilt.
+        """
+        key = (int(n), int(out_g))
+        cache = getattr(self, "_anchor_root_cache", None)
+        if cache is None:
+            self._anchor_root_cache = {}
+            cache = self._anchor_root_cache
+        if key in cache:
+            return cache[key]
+
+        n, out_g = key
+        weights = self._anchor_sparse_weights(n, out_g)
+        m = self._embed_size(n)
+        root_fft = self._spectrum_root(n).astype(np.float64)
+        cov = sfft.irfft2(root_fft * root_fft, s=(m, m)).real
+        p = len(weights)
+        k = np.empty((p, p), dtype=np.float64)
+        for a, wa in enumerate(weights):
+            for b in range(a + 1):
+                wb = weights[b]
+                val = 0.0
+                for (ya, xa), va in wa.items():
+                    for (yb, xb), vb in wb.items():
+                        val += va * vb * cov[(ya - yb) % m, (xa - xb) % m]
+                k[a, b] = k[b, a] = val
+
+        # Numerical eig-root is robust to tiny roundoff negatives.  It
+        # reproduces K to machine precision without adding a variance jitter.
+        ev, vec = np.linalg.eigh(k)
+        spatial_root = (vec * np.sqrt(np.maximum(ev, 0.0))).astype(np.float32)
+        cache[key] = spatial_root
+        return spatial_root
+
+    def _tilt_group_ids(self):
+        ids = []
+        for gi, idx in enumerate(self.groups):
+            if 0 in idx or 1 in idx:
+                ids.append(gi)
+        if len(ids) != 2:
+            raise RuntimeError(f"expected two tilt-containing Noll blocks, got {ids}")
+        return tuple(ids)
+
+    def sample_for_d3_reference(self, n, d_over_r0, rng, high_grid):
+        """Previous full-coarse path retained only for acceptance tests."""
+        n = int(n); dr = float(d_over_r0); high_grid = int(high_grid)
         coarse = self._draw_mixed_coarse(n, rng)
         scale = np.float32(dr ** (5.0 / 6.0))
-
         tilt = _bilinear_resize(coarse[:2], n)
         tilt *= (1.0 / np.sqrt(self._interp_variance(n)))[None, :, :]
         tilt *= scale
-
         high = self._sample_regular_via_dense(coarse[2:], n, high_grid)
         high *= scale
         return tilt.astype(np.float32, copy=False), high.astype(np.float32, copy=False)
 
-    def sample(self, n, d_over_r0, rng):
-        """Draw all dense coefficients with pointwise D2/Noll covariance.
+    def sample_for_d3(self, n, d_over_r0, rng, high_grid):
+        """Draw only coefficient values actually consumed by D3.
 
-        This full-field API is retained for diagnostics/tests.  Production D3
-        uses ``sample_for_d3`` so high-order modes are never materialized at
-        pixels where no PSF is evaluated.
+        The two Noll blocks containing j=2,j=3 are still generated by the
+        original FFT field, preserving their joint dense tilt/high-order
+        statistics.  Every other Noll block is independent of tilt and is
+        sampled directly from the exact Gaussian marginal at the PSF-anchor
+        locations.  No physical/statistical approximation is introduced.
         """
-        n = int(n)
-        dr = float(d_over_r0)
-        if n <= 0:
-            raise ValueError('n must be positive')
+        n = int(n); dr = float(d_over_r0); high_grid = int(high_grid)
+        if n <= 0 or high_grid < 2:
+            raise ValueError("invalid D3 sampling geometry")
         if not np.isfinite(dr) or dr <= 0.0:
-            raise ValueError('d_over_r0 must be positive and finite')
+            raise ValueError("d_over_r0 must be positive and finite")
 
+        scale = np.float32(dr ** (5.0 / 6.0))
+        tilt = np.empty((2, n, n), dtype=np.float32)
+        high = np.empty((self.n_coeff - 2, high_grid, high_grid), dtype=np.float32)
+        inv_std = (1.0 / np.sqrt(self._interp_variance(n))).astype(np.float32)
+
+        tilt_gids = self._tilt_group_ids()
+        coarse_blocks = self._draw_blocks_coarse(n, rng, tilt_gids)
+        for gi in tilt_gids:
+            idx = self.groups[gi]
+            block = coarse_blocks[gi]
+            # Dense output only for the actual tilt row in each block.
+            for row, mode_idx in enumerate(idx):
+                if mode_idx in (0, 1):
+                    dense = _bilinear_resize(block[row:row+1], n)[0]
+                    dense *= inv_std
+                    tilt[mode_idx] = dense * scale
+            # The high-order members of the same block are needed only at
+            # PSF anchors, but must remain jointly realized with the tilt.
+            sampled = self._sample_regular_via_dense(block, n, high_grid)
+            for row, mode_idx in enumerate(idx):
+                if mode_idx >= 2:
+                    high[mode_idx - 2] = sampled[row] * scale
+
+        spatial_root = self._anchor_spatial_root(n, high_grid)
+        p = high_grid * high_grid
+        tilt_set = set(tilt_gids)
+        for gi, (idx, modal_root) in enumerate(zip(self.groups, self.block_roots)):
+            if gi in tilt_set:
+                continue
+            b = len(idx)
+            white = rng.standard_normal((b, p), dtype=np.float32)
+            latent = white @ spatial_root.T
+            mixed = modal_root @ latent
+            for row, mode_idx in enumerate(idx):
+                # All modes in non-tilt blocks are high-order.
+                high[mode_idx - 2] = mixed[row].reshape(high_grid, high_grid) * scale
+
+        return tilt, high
+
+    def sample(self, n, d_over_r0, rng):
+        """Draw all dense coefficients; diagnostic/reference API only."""
+        n = int(n); dr = float(d_over_r0)
+        if n <= 0 or not np.isfinite(dr) or dr <= 0.0:
+            raise ValueError("invalid sampling arguments")
         coarse = self._draw_mixed_coarse(n, rng)
         out = _bilinear_resize(coarse, n)
         out *= (1.0 / np.sqrt(self._interp_variance(n)))[None, :, :]
         out *= np.float32(dr ** (5.0 / 6.0))
         return out.astype(np.float32, copy=False)
-
