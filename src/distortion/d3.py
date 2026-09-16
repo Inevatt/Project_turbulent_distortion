@@ -1,247 +1,277 @@
-"""Анизопланатизм: поле смещений вместо одного сдвига на кадр.
+"""D3: dense anisoplanatic Zernike turbulence.
 
-D2 двигал весь кадр целиком. Физически это верно только внутри
-изопланатического угла: два луча, разошедшиеся на достаточный угол,
-проходят через разные неоднородности и наклоняются по-разному. D3
-заменяет скаляр на поле T(p), всё остальное оставляя нетронутым.
+Frozen experiment semantics:
+  * K=231 and the same Noll covariance/Zernike normalization as D2;
+  * one joint spatial coefficient field a2..a231;
+  * a2,a3 -> dense tilt field;
+  * a4..a231 -> spatially varying tilt-free PSF;
+  * T first, then B;
+  * B is source-indexed/scattering;
+  * only the global mean tilt is returned for target registration;
+  * blur centroid is NOT removed.
 
-Размытие остаётся изопланатичным, одно ядро на кадр, тем же кодом
-что в D2 с занулённым наклоном. Это разделение авторов симулятора
-(Mao, Chimitt, Chan, ICCV 2021, рис. 3): наклоны получают
-пространственную корреляцию, безнаклонные размытия делятся внутри
-изопланатического угла. Поблочная генерация PSF стоила бы 20-90 мс
-на пример против 3 мс на всё ядро и сделала бы уровень CPU-bound.
-
-КАЛИБРОВКА. Поточечная маргиналка обязана совпадать с D2: в любом
-пикселе дисперсия смещения есть та же ноллевская
-0.448*(D/r0)^(5/3) рад^2, а ядро рисуется тем же генератором. Тогда
-средняя по реализациям PSF в фиксированном пикселе равна средней
-PSF уровня D2, то есть длинноэкспозиционной OTF Фрида, и D/r0
-означает на всех четырёх уровнях одно и то же. Порядок операций на
-это не влияет: поле и коэффициенты рисуются независимыми вызовами
-rng, поэтому математическое ожидание факторизуется одинаково.
-
-Одно отличие от D2 здесь неустранимо. В D2 наклон остаётся внутри
-фазы, и межмодовая корреляция наклон-кома (corr(a_3,a_7) = -0.269)
-сохраняется. В D3 наклон приходит из отдельного поля, и эта связь
-рвётся. Референс рвёт её точно так же; на приёмку по H_LE это не
-влияет (D2 и D3 сходятся в пределах 1-2%), но при сравнении D2
-против D3 разница уровней строго говоря не только анизопланатизм.
-
-Отсюда главное свойство уровня: длина корреляции НЕ добавляет
-дрожания, она делит фиксированный бюджет. Усреднённо
-
-    (1/A) * integral_A Var(T(p) - M) dp  =  sigma_tilt^2 - Var(M),
-
-где M — среднее поля. Равенство именно усреднённое: в отдельной
-точке перекрёстный член не ноль. M уезжает в окно таргета ровно
-так же, как глобальный сдвиг в D1 и D2, а остаток и есть новый
-эффект уровня. При длине корреляции -> бесконечность поле
-вырождается в константу и D3 переходит в D2 точно.
-
-Наружу отдаётся M по всему тайлу, а таргет режется из центра.
-Оптимальным было бы среднее по самому кропу: оно минимизирует
-остаток по определению. Разница RMS 0.17*sigma_tilt, и остаток от
-неё растёт с 0.707 до 0.727 sigma_tilt, то есть на 2.9%. Промах
-нулевой в среднем, а чтобы его убрать, уровню пришлось бы знать
-границы кропа — связь, которой сейчас нет ни у одного уровня.
-
-ФОРМА КОРРЕЛЯЦИИ взята из Chimitt & Chan 2020 в том виде, как она
-считается в turbStats.tilt_mat:
-
-    C0(s) = (I0(s) + I2(s)) / I0(0),   In(s) = int z^(-14/3) Jn(2sz) J2(z)^2 dz
-
-где s — разнос двух лучей в диаметрах апертуры. Это их же
-изотропный вариант: в ур. 33 корреляция анизотропна через
-cos(2*psi_0), а при выравнивании разноса вдоль rho - rho' остаётся
-I0 + I2, одинаковое для обеих осей. Хвост тяжёлый, колмогоровский:
-C0 = 0.5 при s = 4.06, но 1/e только при s = 10.2, и даже при
-s = 100 остаётся 0.17.
-
-Два отступления от референса, оба намеренные.
-
-  Амплитуда берётся из Нолля, а не из их строки масштабирования.
-  В их ур. 31 стоит c2/2^(5/3) с c2 = 7.7554, тогда как
-  c2 * I0(0) = 0.4489 воспроизводит ноллевские 0.4479 в пределах
-  0.2%. Лишний множитель 2^(5/3) = 3.175 приехал из их Леммы 3, где
-  внутри |.|^(5/3) стоит делённое пополам; статья это сама
-  оговаривает — "ровно ур. 3 Чанана с дополнительной константой
-  2^(5/3)". Побочно это подтверждает точность нашей квадратуры:
-  I0(0) = 0.057879.
-
-  Параметром уровня сделан не угол, а TILT_CORR_HALF_PX — расстояние
-  в пикселях, на котором корреляция падает вдвое. Причина: из их
-  ур. 37 видно, что D/r0 входит только в амплитуду, а форма C0(s)
-  от него не зависит вообще. Значит длина корреляции — чистая
-  геометрия установки, 2*D^2/(lambda*L) пикселей на единицу s,
-  постоянная на всём диапазоне D/r0, и лестница остаётся одномерной.
-  И это ровно та величина, которая достаётся из реальных данных
-  автокорреляцией поля оптического потока. Но по ТЕСТОВЫМ данным её
-  калибровать нельзя: для синтетики это геометрическое
-  предположение о сцене, и подгонка была бы протечкой.
-
-ИНТЕРПОЛЯЦИЯ. Варп без неё невозможен, и она добавляет размытия,
-которого нет у D0-D2. Замерено по падению MTF против точного
-фазового сдвига: билинейная эквивалентна гауссиане sigma = 0.372 px
-и уводит слабый конец с D/r0 = 1 на 1.28 — это подмена главной оси,
-а не мелочь. Кубический сплайн даёт 0.087 px и уход на 1.02.
-Платим за это носителем: у сплайна он не шаблон, а хвост
-рекурсивного префильтра, и 8 px — расстояние, где влияние падает
-до 1e-4. Часть этой ошибки высокочастотная, и следующая за варпом
-свёртка её давит, так что 0.087 px — верхняя оценка.
-
-ПОРЯДОК ОПЕРАЦИЙ: сначала варп, потом размытие, out = B(T(J)).
-Наклон смещает ИСТОЧНИК, а не выход: точка u уезжает в u + T(u) и
-размывается уже там. Обратный порядок эквивалентен индексации
-наклона выходным пикселем, h_p(x) = k(x - T(p)); подстановка даёт
-(I (*) k)(p - T(p)), но сама посылка неверна — это ур. 12 у Чана,
-и форма пятна при ней разрушается, потому что каждый выходной
-пиксель уносится своим наклоном. Изопланатичность размытия от
-этого не спасает: разбор ведётся при пространственно инвариантном
-ядре (их ур. 11) и всё равно даёт неравенство ур. 12 против 14.
-Разницу создаёт густое поле наклонов, а здесь оно густое: на
-радиусе ядра 19 px корреляция наклона ещё 0.705, то есть
-дифференциальный наклон поперёк носителя свёртки 0.77*sigma_tilt.
-Численно два порядка расходятся на 36.6 дБ при D/r0 = 5.
-
-  Источники расходятся между собой, поэтому ссылки точные.
-  Chimitt & Chan 2020 (раздел 4.7) и P2S 2021 (раздел 2.2)
-  применяют размытие ДО наклона. Авторы сами это исправили:
-  Chan, "Tilt-then-blur or blur-then-tilt?", IEEE SPL 29:1833-1837,
-  2022. В TMT (Zhang, Mao, Chimitt, Chan; arXiv 2207.06465, IEEE
-  TCI 2024) ур. 1 записывает модель уже как I = [B o T](J) со
-  ссылкой на ту же ноту, и код симулятора (simulator.py,
-  simulator_zernike.py в MambaTM) делает grid_sample по чистому
-  кадру, а размытие — по результату варпа. Более общая и более
-  поздняя формулировка того же: Chimitt, Zhang, Chi, Chan,
-  "Scattering and gathering for spatially varying blurs", IEEE TSP
-  72:1507-1517, 2024 — индексация по входу (scattering) есть
-  описание из скалярной дифракционной теории, индексация по выходу
-  (gathering) — приближение, и совпадают они только при
-  пространственно инвариантной PSF.
-
-  Осторожно при чтении ноты: в её §III одна фраза записана
-  наоборот ("H = T o B"). Это опечатка — ей противоречат три
-  вывода во введении, подпись к рис. 1, матричный вывод ур. 10
-  (H = BT) и раздел рекомендаций.
-
-  Там же в рекомендациях сам Чан пишет, что для натуральных
-  изображений T o B — допустимое приближение: разница по его
-  ур. 15 идёт через градиент изображения, а он разрежен. То есть
-  прошлый порядок давал не мусор, а приближение; но раз стоимость
-  обоих одинакова, брать приближение незачем.
-
-  Цена правильного порядка: сплайн работает по резкой картинке, и
-  зависимость результата от интерполятора вдвое выше — 75.5 дБ
-  против 81.4 при сравнении order=3 с order=5. При потолке задачи
-  38 дБ это несущественно.
-
-В D1 и D2 вопроса не возникает вовсе: наклон там один на кадр,
-T — чистый перенос, и он коммутирует со свёрткой точно.
+The only runtime approximation is numerical: exact tilt-free PSFs are evaluated
+on a regular anchor grid and bilinearly interpolated across source pixels.
+Scattering is then exact for that interpolated PSF field.  No external
+model or extra physical parameter is required.
 """
 
 import numpy as np
 import scipy.fft as sfft
-from scipy.integrate import quad
+from scipy.fft import next_fast_len
 from scipy.ndimage import map_coordinates
-from scipy.signal import fftconvolve
-from scipy.special import jv
 
 from .base import Degradation
-from .wavefront import Kolmogorov, PSF_RADIUS_PX, centroid_px
+from .dense_zernike import DenseZernikeSampler, TILT_CORR_HALF_PX
+from .wavefront import K_MODES, Kolmogorov, PSF_RADIUS_PX
 from ..optics import TILT_CLIP
 
-TILT_CORR_HALF_PX = 55.0   # где корреляция наклона падает вдвое, px
-SPLINE_ORDER = 3           # порядок интерполяции варпа
-SPLINE_REACH_PX = 8        # хвост префильтра сплайна до уровня 1e-4
+SPLINE_ORDER = 3
+SPLINE_REACH_PX = 8
+# Numerical grid for local PSFs.  With the fixed 55 px spatial geometry this
+# uses one PSF anchor per half-correlation length; this is only a
+# numerical approximation of the smoothly varying local PSF field.
+PSF_ANCHOR_SPACING_PX = TILT_CORR_HALF_PX
+SCATTER_CHUNK = 2
 
 
-def _bessel_int(order, s):
-    """In(s) из Chimitt & Chan 2020. Подынтегральное ~ z^(-2/3) при z -> 0."""
-    return quad(lambda z: z ** (-14.0 / 3.0) * jv(order, 2.0 * s * z) * jv(2, z) ** 2,
-                0.0, 1e3, limit=2000)[0]
+def _regular_weights(n, g):
+    """1-D linear interpolation weights from g anchors to n pixels.
+
+    Returns W with shape (g,n), non-negative and sum_a W[a,x] == 1.
+    """
+    n, g = int(n), int(g)
+    if g < 2 or n < 2:
+        raise ValueError("n and g must be >= 2")
+    q = np.linspace(0.0, g - 1.0, n, dtype=np.float32)
+    i0 = np.floor(q).astype(np.intp)
+    i1 = np.minimum(i0 + 1, g - 1)
+    t = q - i0
+    w = np.zeros((g, n), dtype=np.float32)
+    x = np.arange(n)
+    w[i0, x] += 1.0 - t
+    w[i1, x] += t
+    return w
 
 
-def corr_table():
-    """C0(s), густо у нуля и логарифмически дальше. Считается один раз."""
-    s = np.concatenate([np.linspace(0.0, 5.0, 51), np.geomspace(5.5, 200.0, 40)])
-    i0 = np.array([_bessel_int(0, v) for v in s])
-    i2 = np.array([_bessel_int(2, v) for v in s])
-    return s, (i0 + i2) / i0[0]
+def _sample_regular(field, g):
+    """Bilinearly sample (C,n,n) on a regular g x g anchor grid."""
+    field = np.asarray(field, dtype=np.float32)
+    c, n, n2 = field.shape
+    if n != n2:
+        raise ValueError("field must be square")
+    # First y, then x.  This is equivalent to evaluating the same bilinear
+    # interpolation used by _regular_weights at the anchor coordinates.
+    # Anchors are exactly the end points of the dense field's coordinate span.
+    q = np.linspace(0.0, n - 1.0, g, dtype=np.float32)
+    i0 = np.floor(q).astype(np.intp)
+    i1 = np.minimum(i0 + 1, n - 1)
+    t = q - i0
+    y = field[:, i0, :] * (1.0 - t)[None, :, None] + field[:, i1, :] * t[None, :, None]
+    return (
+        y[:, :, i0] * (1.0 - t)[None, None, :]
+        + y[:, :, i1] * t[None, None, :]
+    ).astype(np.float32, copy=False)
+
+
+def _exact_tilt_free_psfs(wf, high, batch=64):
+    """Exact local PSFs from a4..a231 using the same pupil model as D2."""
+    high = np.asarray(high, dtype=np.float32)
+    if high.ndim != 2 or high.shape[1] != K_MODES - 3:
+        raise ValueError(f"expected (N,{K_MODES - 3}) high-order coefficients")
+
+    r = PSF_RADIUS_PX
+    c = wf.n_grid // 2
+    basis_hi = wf.basis[2:].astype(np.float32, copy=False)
+    out = []
+    for start in range(0, len(high), int(batch)):
+        hcoeff = high[start:start + int(batch)]
+        phase = hcoeff @ basis_hi
+        u = np.zeros((len(hcoeff), wf.n_grid, wf.n_grid), dtype=np.complex64)
+        u[:, wf.mask] = np.exp(1j * phase).astype(np.complex64, copy=False)
+        h = np.abs(sfft.fft2(u, axes=(-2, -1))) ** 2
+        h = sfft.fftshift(h, axes=(-2, -1))
+        h = h[:, c-r:c+r+1, c-r:c+r+1]
+        h /= h.sum(axis=(-2, -1), keepdims=True)
+        out.append(h.astype(np.float32, copy=False))
+    return np.concatenate(out, axis=0)
+
+
+def _scatter_anchor_blur(src, psfs, wy, wx, chunk=SCATTER_CHUNK):
+    """Source-indexed blur for a bilinearly interpolated anchor PSF field.
+
+    Local PSF at source pixel (y,x):
+        h_(y,x) = sum_ay,ax wy[ay,y] * wx[ax,x] * psfs[ay,ax]
+
+    By linearity, scattering is therefore a sum of ordinary convolutions of
+    ``src * anchor_weight`` with the corresponding anchor PSF.  The weight is
+    attached to the SOURCE before convolution; this is not gathering.
+    """
+    src = np.asarray(src, dtype=np.float32)
+    psfs = np.asarray(psfs, dtype=np.float32)
+    gy, gx, kh, kw = psfs.shape
+    if gy != wy.shape[0] or gx != wx.shape[0]:
+        raise ValueError("anchor PSF/weight shapes disagree")
+    if kh != kw or kh % 2 != 1:
+        raise ValueError("PSF kernels must be odd square arrays")
+    if wy.shape[1] != src.shape[0] or wx.shape[1] != src.shape[1]:
+        raise ValueError("weight maps do not match source shape")
+
+    r = kh // 2
+    h, w = src.shape
+    # Same boundary convention as D2: symmetric == scipy ndimage reflect.
+    src_pad = np.pad(src, r, mode="symmetric")
+    hp, wp = src_pad.shape
+    fy = next_fast_len(hp + kh - 1)
+    fx = next_fast_len(wp + kw - 1)
+    y0 = x0 = kh - 1
+    out = np.zeros((h, w), dtype=np.float32)
+
+    pairs = [(ay, ax) for ay in range(gy) for ax in range(gx)]
+    for start in range(0, len(pairs), int(chunk)):
+        sub = pairs[start:start + int(chunk)]
+        weights = np.stack(
+            [wy[ay, :, None] * wx[ax, None, :] for ay, ax in sub], axis=0
+        ).astype(np.float32, copy=False)
+        # pad(src * weight) is the correct symmetric extension of the weighted
+        # source.  Computing the product before padding avoids any ambiguity.
+        weighted = np.pad(
+            src[None, :, :] * weights,
+            ((0, 0), (r, r), (r, r)),
+            mode="symmetric",
+        )
+        kernels = np.stack([psfs[ay, ax] for ay, ax in sub], axis=0)
+        fs = sfft.rfft2(weighted, s=(fy, fx), axes=(-2, -1))
+        fk = sfft.rfft2(kernels, s=(fy, fx), axes=(-2, -1))
+        conv = sfft.irfft2(fs * fk, s=(fy, fx), axes=(-2, -1))
+        out += conv[:, y0:y0+h, x0:x0+w].sum(axis=0).astype(np.float32)
+    return out
 
 
 class D3Anisoplanatic(Degradation):
     name = "d3"
 
-    def __init__(self, diffraction_fwhm_px, corr_half_px=TILT_CORR_HALF_PX):
+    def __init__(
+        self,
+        diffraction_fwhm_px,
+        corr_half_px=TILT_CORR_HALF_PX,
+        psf_anchor_spacing_px=PSF_ANCHOR_SPACING_PX,
+    ):
         super().__init__(diffraction_fwhm_px)
         self.wf = Kolmogorov(diffraction_fwhm_px)
-        self.s_tab, self.c_tab = corr_table()
-        # масштаб задаётся через половинное падение: параметр в пикселях,
-        # таблица в диаметрах апертуры
-        self.px_per_s = corr_half_px / np.interp(0.5, self.c_tab[::-1],
-                                                 self.s_tab[::-1])
-        self._cache = {}
-
-    def _prepared(self, n):
-        """Корень спектра поля и сетка координат для кадра n x n.
-
-        Циркулянтное вложение вдвое большего размера: у C0 тяжёлый хвост,
-        и на торе размером с кадр поле замкнулось бы само на себя.
-        Спектр после вложения местами уходит в минус — обрезается, а
-        поточечная дисперсия возвращается к единице ТОЧНО, аналитически:
-        Var = (1/m^2) * сумма спектра, значит достаточно поделить на неё.
-        Иначе обрезка молча сдвинула бы силу дрожания, то самое число,
-        которое обязано совпадать с D1 и D2.
-        """
-        if n not in self._cache:
-            m = 2 * n
-            lag = np.minimum(np.arange(m), m - np.arange(m))
-            cov = np.interp(np.hypot(lag[:, None], lag[None, :]) / self.px_per_s,
-                            self.s_tab, self.c_tab)
-            lam = np.maximum(sfft.rfft2(cov).real, 0.0)
-            total = lam[:, 0].sum() + lam[:, -1].sum() + 2.0 * lam[:, 1:-1].sum()
-            grid = np.mgrid[0:n, 0:n].astype(np.float32)
-            self._cache[n] = (np.sqrt(lam * m * m / total).astype(np.float32), grid)
-        return self._cache[n]
+        self.sampler = DenseZernikeSampler(K_MODES, corr_half_px)
+        self.psf_anchor_spacing_px = float(psf_anchor_spacing_px)
+        if self.psf_anchor_spacing_px <= 0.0:
+            raise ValueError("psf_anchor_spacing_px must be positive")
+        self._grid_cache = {}
+        self._weight_cache = {}
 
     def support_radius_px(self, d_over_r0):
-        return (PSF_RADIUS_PX + SPLINE_REACH_PX
-                + int(np.ceil(TILT_CLIP * self.wf.tilt_sigma_px(d_over_r0))))
+        return (
+            PSF_RADIUS_PX
+            + SPLINE_REACH_PX
+            + int(np.ceil(TILT_CLIP * self.wf.tilt_sigma_px(d_over_r0)))
+        )
 
-    def field(self, n, d_over_r0, rng):
-        """Поле смещений (2, n, n) в пикселях. Белый шум, отфильтрованный
-        корнем спектра. Обрезка та же, что в D1 и D2, и тем же TILT_CLIP —
-        дефицит дисперсии 0.012%."""
-        root, _ = self._prepared(n)
-        m = 2 * n
-        sigma = self.wf.tilt_sigma_px(d_over_r0)
-        noise = rng.standard_normal((2, m, m), dtype=np.float32)
-        out = sfft.irfft2(sfft.rfft2(noise, axes=(1, 2)) * root,
-                          s=(m, m), axes=(1, 2))[:, :n, :n] * sigma
-        return np.clip(out, -TILT_CLIP * sigma, TILT_CLIP * sigma, out=out)
+    def _grid(self, n):
+        n = int(n)
+        if n not in self._grid_cache:
+            self._grid_cache[n] = np.mgrid[0:n, 0:n].astype(np.float32)
+        return self._grid_cache[n]
+
+    def _psf_geometry(self, n):
+        n = int(n)
+        g = int(np.ceil((n - 1) / self.psf_anchor_spacing_px)) + 1
+        g = max(2, min(g, n))
+        key = (n, g)
+        if key not in self._weight_cache:
+            w = _regular_weights(n, g)
+            self._weight_cache[key] = w
+        return g, self._weight_cache[key]
+
+    def _tilt_limit(self, d_over_r0):
+        return np.float32(
+            TILT_CLIP * self.wf.sigma_tilt_rad * float(d_over_r0) ** (5.0 / 6.0)
+        )
+
+    def coefficient_field(self, n, d_over_r0, rng):
+        """Full dense a2..a231 field, retained for diagnostics/tests.
+
+        Production ``__call__`` uses ``coefficient_components`` below so the
+        228 high-order planes are not materialized at unused pixels.
+        """
+        a = self.sampler.sample(n, d_over_r0, rng)
+        np.clip(a[:2], -self._tilt_limit(d_over_r0), self._tilt_limit(d_over_r0), out=a[:2])
+        return a
+
+    def coefficient_components(self, n, d_over_r0, rng):
+        """Coefficient data actually consumed by D3.
+
+        Returns dense j=2,3 and j=4..231 only at the local-PSF anchor grid.
+        Both come from one joint FFT/Noll realization.
+        """
+        g, _ = self._psf_geometry(n)
+        tilt_coeff, high_anchor = self.sampler.sample_for_d3(
+            n, d_over_r0, rng, high_grid=g
+        )
+        lim = self._tilt_limit(d_over_r0)
+        np.clip(tilt_coeff, -lim, lim, out=tilt_coeff)
+        return tilt_coeff, high_anchor
+
+    def _local_psfs_from_anchors(self, high_anchor):
+        """Exact tilt-free PSFs from already sampled high-order anchors."""
+        high_anchor = np.asarray(high_anchor, dtype=np.float32)
+        if high_anchor.ndim != 3 or high_anchor.shape[0] != K_MODES - 3:
+            raise ValueError(
+                f"expected ({K_MODES - 3},g,g) high-order anchors, got {high_anchor.shape}"
+            )
+        g, g2 = high_anchor.shape[1:]
+        if g != g2:
+            raise ValueError("high-order anchor grid must be square")
+        vectors = high_anchor.reshape(K_MODES - 3, -1).T
+        psfs = _exact_tilt_free_psfs(self.wf, vectors)
+        side = 2 * PSF_RADIUS_PX + 1
+        return psfs.reshape(g, g, side, side)
+
+    def _local_psfs(self, high):
+        """Reference full-field path used by diagnostics."""
+        _, n, n2 = high.shape
+        if n != n2:
+            raise ValueError("D3 expects square fields")
+        g, w = self._psf_geometry(n)
+        high_anchor = _sample_regular(high, g)
+        return self._local_psfs_from_anchors(high_anchor), w
 
     def __call__(self, img, d_over_r0, rng):
-        n = len(img)
-        _, grid = self._prepared(n)
-        field = self.field(n, d_over_r0, rng)
+        img = np.asarray(img, dtype=np.float32)
+        if img.ndim != 2 or img.shape[0] != img.shape[1]:
+            raise ValueError(f"D3 expects square 2-D input, got {img.shape}")
+        n = img.shape[0]
 
-        # Содержимое обязано уехать на +T(p), поэтому читаем из p - T(p):
-        # та же конвенция, что у ядра со сдвигом в D1 и D2.
-        warped = map_coordinates(img, grid - field, order=SPLINE_ORDER,
-                                 mode="reflect")
+        # ONE joint realization, so tilt/high-order Noll correlations are kept.
+        tilt_coeff, high_anchor = self.coefficient_components(n, d_over_r0, rng)
 
-        # Ядро безнаклонное: весь наклон уже в поле. Варп идёт первым,
-        # обоснование в шапке файла.
-        a = self.wf.coeffs(d_over_r0, rng)
-        a[:2] = 0.0
-        kernel = self.wf.psf(a, PSF_RADIUS_PX)
-        out = fftconvolve(np.pad(warped, PSF_RADIUS_PX, mode="symmetric"),
-                          kernel, mode="valid")
+        # j=2 is x-tilt, j=3 is y-tilt; map_coordinates uses (y,x).
+        tilt = np.empty((2, n, n), dtype=np.float32)
+        tilt[0] = tilt_coeff[1] * np.float32(self.wf.px_per_rad)
+        tilt[1] = tilt_coeff[0] * np.float32(self.wf.px_per_rad)
 
-        # Наружу — среднее поля плюс центроид ядра. Локальные отклонения
-        # от среднего невосстановимы окном таргета, и это не невязка,
-        # а сам новый эффект уровня.
-        cy, cx = centroid_px(kernel)
-        return out.astype(np.float32), (float(field[0].mean()) + cy,
-                                        float(field[1].mean()) + cx)
+        # T first.  Content at source p moves to p+T(p), therefore inverse
+        # sampling of the warped image reads the source at p-T(p).
+        warped = map_coordinates(
+            img,
+            self._grid(n) - tilt,
+            order=SPLINE_ORDER,
+            mode="reflect",
+        ).astype(np.float32, copy=False)
+
+        # B second.  a2,a3 never enter these PSFs: they are tilt-free.
+        _, w = self._psf_geometry(n)
+        psfs = self._local_psfs_from_anchors(high_anchor)
+        out = _scatter_anchor_blur(warped, psfs, w, w)
+        np.clip(out, 0.0, 1.0, out=out)
+
+        # data.py removes only the recoverable global translation.  There is no
+        # blur-centroid term here by design.
+        shift = (float(tilt[0].mean()), float(tilt[1].mean()))
+        return out.astype(np.float32, copy=False), shift

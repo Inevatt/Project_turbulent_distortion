@@ -9,7 +9,7 @@ cfg = yaml.safe_load(open("configs/seed1.yaml", encoding="utf-8"))
 d, f0 = cfg["data"], cfg["degradation"]["diffraction_fwhm_px"]
 _, va, _ = split_indices(d["tiles"], d["val_frac"], d["test_frac"], cfg["split_seed"])
 
-for name in ("d0", "d3"):
+for name in ("d0","d1","d15", "d2", "d3", "d3n"):
     ds = FrozenDegraded(d["tiles"], va, LEVELS[name](f0),
                         crop_px=d["crop_px"], margin_px=d["margin_px"],
                         d_over_r0_range=tuple(d["d_over_r0_range"]),
