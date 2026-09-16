@@ -5,3 +5,8 @@ __pycache__/
 *.png
 .venv/
 venv/
+experiments_*/
+results/
+bench/
+*.log
+*.tmp

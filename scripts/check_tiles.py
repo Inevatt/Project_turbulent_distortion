@@ -2,12 +2,12 @@
 """Осмотр нарезанных тайлов глазами.
 
 Запуск из корня проекта:
-    python3 -m scripts.check_tiles
+    python3 check_tiles.py
 
 Печатает сводку и кладёт рядом с тайлами две картинки:
     preview_random.png — случайная выборка тайлов со всего датасета
-    preview_source.png — все тайлы ОДНОЙ фотографии, собранные обратно в сетку
-                         (должна читаться как исходный снимок с обрезанными краями)
+    preview_source.png — тайлы ОДНОЙ фотографии в контактном листе
+                         (их исходные координаты в репозитории не сохранены)
 """
 
 from pathlib import Path
@@ -56,7 +56,7 @@ def main():
     pick = np.random.default_rng(0).choice(n, size=min(GRID * GRID, n), replace=False)
     sheet([np.asarray(tiles[i]) for i in sorted(pick)], GRID).save(TILES / "preview_random.png")
 
-    # 2) одна фотография, собранная обратно
+    # 2) контактный лист: при подвыборке 15 тайлов это не реконструкция фото
     src = int(np.bincount(sid).argmax())
     idx = np.flatnonzero(sid == src)
     sheet([np.asarray(tiles[i]) for i in idx], COLS).save(TILES / "preview_source.png")

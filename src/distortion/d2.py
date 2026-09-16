@@ -1,73 +1,32 @@
+"""Isoplanatic finite-mode Kolmogorov model, with the same T-then-B
+rendering convention as D3. One Noll j=2..36 vector per image.
+"""
 import numpy as np
+from scipy.ndimage import map_coordinates
 from scipy.signal import fftconvolve
-
 from .base import Degradation
-from .wavefront import Kolmogorov, PSF_RADIUS_PX, centroid_px
+from .wavefront import Kolmogorov, PSF_RADIUS_PX
 from ..optics import TILT_CLIP
 
-
 class D2Kolmogorov(Degradation):
-    """Своя PSF на каждый кадр, одна на весь кадр.
+    name = 'd2'
 
-    D1 разыгрывал положение фиксированного пятна, D2 разыгрывает саму
-    его форму: фаза на зрачке — случайная реализация колмогоровской
-    статистики, PSF — модуль квадрата её преобразования Фурье. Отсюда
-    спеклы: зерно размером lambda/D в огибающей размером lambda/r0.
-
-    Ширина при этом не подгоняется, а получается. Проверка — замкнутая
-    формула Фрида для средней OTF, без единого свободного параметра:
-
-        H_LE(nu) = exp{ -3.44 (nu * D/r0)^(5/3) }
-
-    Усреднение PSF D2 по реализациям ложится на неё в пределах 1-2%
-    (check_d2.py). Это и есть приёмка уровня: совпадение означает, что
-    D/r0 в D2 значит ровно то же, что в D0 и D1.
-
-    Короткоэкспозиционная формула H_SE того же Фрида (она же с
-    множителем [1 - nu^(1/3)]) для приёмки НЕ годится, хотя напрашивается.
-    Она выведена в предположении, что наклон статистически независим
-    от старших мод; у Нолля они коррелированы, и снятие наклона
-    делает фазу неоднородной по зрачку. Измеренная OTF безнаклонного
-    ядра идёт выше H_SE в 2-3 раза на высоких частотах, и это свойство
-    формулы, а не генератора: сам Фрид оговаривает это допущение
-    сноской. H_LE проверяется на полной фазе, где допущения нет.
-
-    Изопланатизм. PSF одна на кадр, как в D1. Обоснование авторов
-    симулятора: после снятия наклона разные безнаклонные размытия
-    слабо различаются в пределах изопланатического угла, тем более
-    при ограниченном разрешении изображения. Ломается это в D3,
-    и управляет там уже theta_0, а не r0.
-
-    Длина волны. Авторы проверили, что PSF по видимому диапазону
-    меняется мало и RGB можно симулировать одним ядром на 525 нм.
-    Здесь кадры серые, вопрос не возникает вовсе.
-    """
-
-    name = "d2"
-
-    def __init__(self, diffraction_fwhm_px):
+    def __init__(self,diffraction_fwhm_px):
         super().__init__(diffraction_fwhm_px)
-        self.wf = Kolmogorov(diffraction_fwhm_px)
+        self.wf=Kolmogorov(diffraction_fwhm_px)
 
-    def support_radius_px(self, d_over_r0):
-        return PSF_RADIUS_PX + int(np.ceil(TILT_CLIP * self.wf.tilt_sigma_px(d_over_r0)))
+    def support_radius_px(self,d_over_r0):
+        return PSF_RADIUS_PX+1+int(np.ceil(TILT_CLIP*self.wf.tilt_sigma_px(d_over_r0)))
 
-    def __call__(self, img, d_over_r0, rng):
-        a = self.wf.coeffs(d_over_r0, rng)
+    def _render_coeffs(self,img,a):
+        tilt=tuple(float(v) for v in self.wf.shift_px(a))
+        high=a.copy();high[:2]=0
+        kernel=self.wf.psf(high,PSF_RADIUS_PX)
+        yy,xx=np.mgrid[:img.shape[0],:img.shape[1]]
+        # Backward bilinear warp, matching D3's align_corners=True convention.
+        warped=map_coordinates(img,[yy-tilt[0],xx-tilt[1]],order=1,mode='mirror')
+        out=fftconvolve(np.pad(warped,PSF_RADIUS_PX,mode='symmetric'),kernel,mode='valid')
+        return np.clip(out,0,1).astype(np.float32),tilt
 
-        # Ядро вырезается вокруг НЕсдвинутого центра, поэтому окно должно
-        # покрыть и само пятно, и уехавший центр. Та же формула, что
-        # в d1._radius: в вызове стоит фактический сдвиг, в
-        # support_radius_px — обрезка, потому что margin обязан покрыть
-        # худший случай.
-        tilt = self.wf.shift_px(a)
-        r = PSF_RADIUS_PX + int(np.ceil(max(abs(s) for s in tilt)))
-        kernel = self.wf.psf(a, r)
-
-        # Край свёртки обязан совпадать с краем D0, иначе у уровней будет
-        # разная подпись границы тайла. gaussian_filter(mode="reflect") —
-        # это отражение БЕЗ повторения крайнего отсчёта, в numpy оно
-        # называется "symmetric"; numpy-шное "reflect" — другой режим.
-        pad = np.pad(img, r, mode="symmetric")
-        out = fftconvolve(pad, kernel, mode="valid")
-        return out.astype(np.float32), centroid_px(kernel)
+    def __call__(self,img,d_over_r0,rng):
+        return self._render_coeffs(img,self.wf.coeffs(d_over_r0,rng))

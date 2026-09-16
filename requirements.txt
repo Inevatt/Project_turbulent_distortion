@@ -1,0 +1,10 @@
+# Python 3.12, Linux x86_64, NVIDIA GPU with a CUDA 13.0-compatible driver.
+# CPU numerical checks used these NumPy/SciPy/scikit-image versions.
+# The CUDA build still requires validation on the training server.
+--extra-index-url https://download.pytorch.org/whl/cu130
+torch==2.14.0+cu130
+numpy==2.3.5
+scipy==1.17.0
+scikit-image==0.26.0
+PyYAML==6.0.3
+Pillow==12.3.0

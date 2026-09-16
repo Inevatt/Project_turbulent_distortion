@@ -1,134 +1,141 @@
-"""Оценка обученных моделей на синтетических тестовых столбцах.
+"""Synthetic cross-generalization matrix with shared degradation batches.
 
-Запуск на инстансе, по реплике на карту:
-    CUDA_VISIBLE_DEVICES=0 python3 -m src.eval_matrix --config configs/s1.yaml
-
-Результат — по файлу на (реплика, обучающий уровень):
-    results/s1__d0.npz    ключи psnr_{столбец}_dr{v}, ssim_{...}, tile_idx
-    results/s1__noop.npz  метрики самого испорченного входа
-
-Всё остальное — матрица, retained, размах по репликам — считается офлайн
-из этих файлов. Повторных прогонов сети не требуется ни для одного разреза.
-
-СЕТКА D/r0. Тестовый набор берётся при d_over_r0_range=(v, v): uniform(v, v)
-возвращает ровно v и тратит то же одно случайное число, поэтому кропы
-на всех пяти значениях сетки совпадают побитово. Бины выходят точные
-и сбалансированные, отдельный кэш не нужен.
-
-СТОЛБЕЦ d3n. Ключ ГСЧ в data.py не содержит имени уровня, а шум в d3n
-разыгрывается ПОСЛЕ поля смещений и коэффициентов. Значит столбцы d3
-и d3n при одном (eval_seed, 0, idx) несут одну и ту же реализацию
-турбулентности и отличаются ровно шумом — сравнение парное по построению.
-
-СТРОКА no-op. Метрики испорченного входа против эталона. Без неё числа
-в матрице не имеют масштаба: retained считается от (диагональ - no-op).
+Generate each (column, D/r0, tile) once, then apply every restoration model.
+Checkpoint each completed column/strength atomically. Final per-row NPZ files
+retain psnr_{column}_dr{v}, ssim_{column}_dr{v}, tile_idx keys.
 """
 import os
-
-# Ограничить внутреннюю многопоточность BLAS/OpenMP:
-# иначе каждый DataLoader worker сам разворачивается на несколько CPU-потоков.
-# Должно стоять ДО import numpy / torch / scipy и модулей проекта.
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-
+for key in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'):
+    os.environ[key] = '1'
 
 import argparse
+import hashlib
+import json
 from pathlib import Path
-
 import numpy as np
 import torch
 import yaml
 from torch.utils.data import DataLoader
-
-from .data import FrozenDegraded, split_indices
+from .data import split_indices
+from .physics_version import physics_id, protocol_id
+from .pair_pipeline import pairs_class, render_batch
 from .distortion import LEVELS
 from .metrics import psnr, ssim
 from .unet import UNet
 
-TEST_LEVELS = ("d0", "d1", "d2", "d3", "d3n")
-DR_GRID = (1.0, 2.0, 3.0, 4.0, 5.0)
-OUT = Path("results")
+TEST_LEVELS = tuple(LEVELS)
+DR_GRID = (1., 2., 3., 4., 5.)
+OUT = Path('results')
+
+
+def file_sha256(path):
+    h = hashlib.sha256()
+    with Path(path).open('rb') as f:
+        for block in iter(lambda: f.read(4 * 1024 * 1024), b''):
+            h.update(block)
+    return h.hexdigest()
+
+
+def atomic_npz(path, **data):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix('.tmp')
+    with tmp.open('wb') as f:
+        np.savez_compressed(f, **data)
+    tmp.replace(path)
+
+
+def load_model(cfg, row, device):
+    ckpt = Path(cfg['out_dir']) / row / 'last.pt'
+    state = torch.load(ckpt, map_location='cpu', weights_only=False)
+    for key, expected in [('cfg', cfg), ('level', row),
+                          ('physics_id', physics_id()), ('protocol_id', protocol_id()),
+                          ('epoch', int(cfg['train']['epochs']))]:
+        if state.get(key) != expected:
+            raise ValueError(f'{ckpt}: incompatible or incomplete checkpoint ({key})')
+    m = cfg['model']
+    net = UNet(in_ch=m['channels'], out_ch=m['channels'], base=m['base'], depth=m['depth']).to(device)
+    net.load_state_dict(state['model'])
+    return net.eval()
+
+
+def run_models(models, ds, batch, workers, device):
+    """All rows receive the identical tensor, including on CUDA."""
+    if hasattr(ds.deg, 'sampler'):
+        ds.deg.sampler._prepare(ds.crop_px + 2 * ds.margin_px)
+    dl = DataLoader(ds, batch_size=batch, shuffle=False, num_workers=workers,
+                    pin_memory=device.type == 'cuda',
+                    **({'prefetch_factor': 1} if workers else {}))
+    scores = {row: ([], []) for row in models}
+    with torch.no_grad():
+        for packed in dl:
+            degraded, clean, _ = render_batch(packed, ds.deg, device)
+            for row, net in models.items():
+                pred = degraded if net is None else net(degraded)
+                scores[row][0].append(psnr(pred, clean))
+                scores[row][1].append(ssim(pred, clean))
+    return {row: (np.concatenate(p), np.concatenate(s)) for row, (p, s) in scores.items()}
 
 
 def run_column(net, ds, batch, workers, device):
-    """(psnr, ssim) по кадрам. net=None — метрики самого входа."""
-    dl = DataLoader(ds, batch_size=batch, shuffle=False,
-                    num_workers=workers, pin_memory=device.type == "cuda")
-    ps, ss = [], []
-    with torch.no_grad():
-        for degraded, clean, _ in dl:
-            pred = degraded if net is None else net(degraded.to(device)).cpu()
-            ps.append(psnr(pred, clean))
-            ss.append(ssim(pred, clean))
-    return np.concatenate(ps), np.concatenate(ss)
+    return run_models({'row': net}, ds, batch, workers, device)['row']
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", required=True)
+    ap.add_argument('--config', required=True)
+    ap.add_argument('--output', type=Path, default=OUT)
+    ap.add_argument('--columns', nargs='+', choices=TEST_LEVELS, default=list(TEST_LEVELS))
+    ap.add_argument('--dr-grid', nargs='+', type=float, default=list(DR_GRID))
     args = ap.parse_args()
-
-    cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
-    d, t, m = cfg["data"], cfg["train"], cfg["model"]
-    f0 = cfg["degradation"]["diffraction_fwhm_px"]
-    tag = Path(cfg["out_dir"]).name.replace("experiments_", "")
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if not all(np.isfinite(v) and v >= 1 for v in args.dr_grid):
+        ap.error('D/r0 must be finite and >= 1')
+    cfg = yaml.safe_load(Path(args.config).read_text(encoding='utf-8'))
+    d, t = cfg['data'], cfg['train']
+    tag = Path(cfg['out_dir']).name.replace('experiments_', '')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
-
-    _, _, te = split_indices(d["tiles"], d["val_frac"], d["test_frac"],
-                             cfg["split_seed"])
-    kw = dict(crop_px=d["crop_px"], margin_px=d["margin_px"], seed=cfg["eval_seed"])
-    OUT.mkdir(exist_ok=True)
-    print(f"{tag}: тестовых тайлов {len(te)}, столбцов {len(TEST_LEVELS)}, "
-          f"сетка D/r0 {DR_GRID}")
-
-    for row in ("noop",) + tuple(sorted(LEVELS)):
-        out = OUT / f"{tag}__{row}.npz"
-        if out.exists():                      # оценка идемпотентна: упала — перезапусти
-            print(f"  {row:5s} уже есть, пропуск")
-            continue
-
-        net = None
-        if row != "noop":
-            ckpt = Path(cfg["out_dir"]) / row / "last.pt"
-            if not ckpt.exists():
-                raise SystemExit(f"нет чекпоинта {ckpt}")
-            state = torch.load(ckpt, map_location=device, weights_only=False)
-            # Молчаливая пара «чужой чекпоинт + этот конфиг» дала бы ячейку,
-            # посчитанную не тем разбиением данных. Сверка полная.
-            if state["cfg"] != cfg:
-                raise SystemExit(f"{ckpt} обучен другим конфигом")
-            if state["level"] != row:
-                raise SystemExit(f"{ckpt} содержит уровень {state['level']}")
-            if state["epoch"] != int(t["epochs"]):
-                raise SystemExit(f"{ckpt} недоучен: {state['epoch']} эпох "
-                                 f"из {t['epochs']}")
-            net = UNet(in_ch=m["channels"], out_ch=m["channels"],
-                       base=m["base"], depth=m["depth"]).to(device)
-            net.load_state_dict(state["model"])
-            net.eval()
-
-        data = {}
-        for col in TEST_LEVELS:
-            deg = LEVELS[col](f0)
-            for v in DR_GRID:
-                ds = FrozenDegraded(d["tiles"], te, deg,
-                                    d_over_r0_range=(v, v), **kw)
-                p, s = run_column(net, ds, int(t["batch_size"]),
-                                  int(t["num_workers"]), device)
-                data[f"psnr_{col}_dr{int(v)}"] = p.astype(np.float32)
-                data[f"ssim_{col}_dr{int(v)}"] = s.astype(np.float32)
-            print(f"  {row:5s} {col:4s} PSNR "
-                  + " ".join(f"{data[f'psnr_{col}_dr{int(v)}'].mean():5.2f}"
-                             for v in DR_GRID))
-
-        np.savez_compressed(out, tile_idx=te.astype(np.int64), **data)
-
-    print(f"готово: {OUT}/{tag}__*.npz")
+    _, _, te = split_indices(d['tiles'], d['val_frac'], d['test_frac'], cfg['split_seed'])
+    if not len(te):
+        raise SystemExit('empty test split')
+    # Validate ALL checkpoints before spending time on synthesis/no-op.
+    models = {'noop': None}
+    for row in LEVELS:
+        models[row] = load_model(cfg, row, device)
+    meta = dict(cfg=cfg, physics_id=physics_id(), protocol_id=protocol_id(),
+                evaluator=file_sha256(__file__), columns=args.columns, dr_grid=args.dr_grid,
+                checkpoints={row: file_sha256(Path(cfg['out_dir']) / row / 'last.pt') for row in LEVELS},
+                dataset={name: file_sha256(Path(d['tiles']) / name) for name in ('source_id.npy', 'tiles.npy')})
+    provenance = json.dumps(meta, sort_keys=True)
+    kw = dict(crop_px=d['crop_px'], margin_px=d['margin_px'], seed=cfg['eval_seed'])
+    all_scores = {row: {} for row in models}
+    print(f'{tag}: {len(te)} test tiles, {len(models)} rows; synthesis shared across rows', flush=True)
+    for col in args.columns:
+        deg = LEVELS[col](cfg['degradation']['diffraction_fwhm_px'])
+        for v in args.dr_grid:
+            suffix = f'{col}_dr{v:g}'
+            shard = args.output / '_parts' / tag / f'{suffix}.npz'
+            if shard.exists():
+                with np.load(shard, allow_pickle=False) as old:
+                    if str(old['provenance']) != provenance or not np.array_equal(old['tile_idx'], te):
+                        raise SystemExit(f'{shard}: provenance differs; choose a fresh --output')
+                    result = {row: (old[f'{row}_psnr'].copy(), old[f'{row}_ssim'].copy()) for row in models}
+            else:
+                ds = pairs_class(deg, frozen=True)(d['tiles'], te, deg, d_over_r0_range=(v, v), **kw)
+                result = run_models(models, ds, int(t['batch_size']), int(t['num_workers']), device)
+                packed = {f'{row}_{metric}': arr.astype(np.float32)
+                          for row, vals in result.items() for metric, arr in zip(('psnr', 'ssim'), vals)}
+                atomic_npz(shard, provenance=provenance, tile_idx=te, **packed)
+            for row, (p, s) in result.items():
+                all_scores[row][f'psnr_{suffix}'] = p.astype(np.float32)
+                all_scores[row][f'ssim_{suffix}'] = s.astype(np.float32)
+            print(f'  {suffix}: ' + ' | '.join(f'{row} {p.mean():.2f}' for row, (p, _) in result.items()), flush=True)
+    for row, data in all_scores.items():
+        atomic_npz(args.output / f'{tag}__{row}.npz', physics_id=physics_id(),
+                   protocol_id=protocol_id(), provenance=provenance, tile_idx=te, **data)
+    print(f'done: {args.output}/{tag}__*.npz', flush=True)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

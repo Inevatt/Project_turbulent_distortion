@@ -20,7 +20,7 @@
 и никак не связана с физикой, а сеть выучит именно её: диагональ
 матрицы завысится, внедиагональные ячейки занизятся.
 
-margin_px обязан быть одинаковым на всех четырёх уровнях и покрывать
+margin_px обязан быть одинаковым на всех шести уровнях и покрывать
 носитель ядра при максимальном D/r0
 
 Уровень возвращает применённый сдвиг, и окно таргета смещается на его
@@ -60,6 +60,11 @@ def split_indices(tiles_dir, val_frac=0.05, test_frac=0.10, seed=42):
 
     Возвращает три массива индексов тайлов: train, val, test."""
     source_id = np.load(Path(tiles_dir) / "source_id.npy")
+    tiles = np.load(Path(tiles_dir) / "tiles.npy", mmap_mode="r")
+    if source_id.ndim != 1 or len(source_id) != len(tiles):
+        raise ValueError("source_id must contain one source ID per tile")
+    if not (0 <= val_frac < 1 and 0 <= test_frac < 1 and val_frac + test_frac < 1):
+        raise ValueError("invalid split fractions")
     sources = np.unique(source_id)
 
     order = np.random.default_rng(seed).permutation(len(sources))
@@ -97,6 +102,19 @@ class DegradedPairs(Dataset):
         self.samples_per_tile = int(samples_per_tile)
         self.epoch = 0
         self.tiles = np.load(Path(tiles_dir) / "tiles.npy", mmap_mode="r")
+        if self.tiles.ndim != 3 or self.tiles.dtype != np.uint8:
+            raise ValueError("tiles.npy must be uint8 (N,H,W), grayscale")
+        if self.indices.ndim != 1 or (len(self.indices) and
+                (self.indices.min() < 0 or self.indices.max() >= len(self.tiles))):
+            raise ValueError("invalid tile indices")
+        if self.crop_px < 1 or self.margin_px < 0 or self.samples_per_tile < 1:
+            raise ValueError("crop and samples_per_tile must be positive; margin nonnegative")
+        if not (np.isfinite(self.d_lo) and np.isfinite(self.d_hi) and 1 <= self.d_lo <= self.d_hi):
+            raise ValueError("dataset requires 1 <= D/r0 min <= max")
+        if min(self.tiles.shape[1:]) < self.crop_px + 2 * self.margin_px:
+            raise ValueError("tiles are smaller than crop + 2*margin")
+        if self.deg.support_radius_px(self.d_hi) > self.margin_px:
+            raise ValueError("margin does not cover degradation support")
 
     def set_epoch(self, epoch):
         self.epoch = int(epoch)

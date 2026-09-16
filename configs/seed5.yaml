@@ -1,30 +1,24 @@
-# Один конфиг на все четыре прогона.
-# Меняется между ними ровно один аргумент --level.
-
-seed: 5000          # инициализация весов и порядок данных
-split_seed: 46      # разбиение картинок на train/val/test
-eval_seed: 999      # заморозка валидации и теста
-
-out_dir: experiments_s5
-
+seed: 5000
+split_seed: 46
+eval_seed: 999
+out_dir: experiments_audit_v1_s5
 data:
-  root: data/clean        # исходные PNG, нужен только make_tiles
-  tiles: data/tiles       # +++ отсюда читает data.py
+  root: data/clean
+  tiles: data/tiles
   crop_px: 128
-  d_over_r0_range: [1.0, 5.0]
-  samples_per_tile: 1     # было samples_per_image: 8
+  d_over_r0_range:
+  - 1.0
+  - 5.0
+  samples_per_tile: 1
   val_frac: 0.05
-  test_frac: 0.10
+  test_frac: 0.1
   margin_px: 40
-
 degradation:
-  diffraction_fwhm_px: 2.0   #!!!!!!Потом замер пикселей на идеальное пятно
-
+  diffraction_fwhm_px: 2.0
 model:
   channels: 1
   base: 48
   depth: 3
-
 train:
   epochs: 60
   batch_size: 32

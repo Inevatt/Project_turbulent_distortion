@@ -1,20 +1,20 @@
 """Обучение UNet на одном уровне деградации.
 
-Между четырьмя прогонами меняется РОВНО один аргумент --level. Всё
+Между шестью прогонами меняется РОВНО один аргумент --level. Всё
 остальное — стартовые веса, порядок батчей, кропы, значения D/r0, число
 шагов, расписание lr — обязано совпадать, иначе разница между строками
-матрицы 4x4 перестанет объясняться только физикой обучающих данных.
+матрицы 6x6 перестанет объясняться только физикой обучающих данных.
 
-Зафиксированные решения (менять только сразу для всех четырёх уровней):
+Зафиксированные решения (менять только сразу для всех шести уровней):
 
   * нет early stopping и нет отбора лучшего чекпоинта по валидации.
-    Иначе четыре модели получат разное число шагов, и часть разницы
+    Иначе шесть моделей получат разное число шагов, и часть разницы
     в матрице объяснится длительностью обучения. Бюджет шагов фиксирован,
     в eval_matrix.py идёт ПОСЛЕДНИЙ чекпоинт. Валидация здесь нужна
     только чтобы видеть, что обучение не разошлось;
 
   * torch.manual_seed(cfg["seed"]) вызывается до создания сети — все
-    четыре модели стартуют из одних и тех же весов;
+    шесть моделей стартуют из одних и тех же весов;
 
   * порядок батчей задаётся отдельным torch.Generator от того же seed,
     поэтому перестановка индексов на всех уровнях одинакова. Вместе
@@ -44,6 +44,8 @@ os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
 import argparse
+import csv
+import fcntl
 import shutil
 import time
 from pathlib import Path
@@ -54,6 +56,8 @@ import yaml
 from torch.utils.data import DataLoader
 
 from .data import DegradedPairs, FrozenDegraded, split_indices
+from .physics_version import physics_id, protocol_id
+from .pair_pipeline import pairs_class, render_batch
 from .distortion import LEVELS   # реестр один на train.py и eval_matrix.py
 from .metrics import psnr, ssim
 from .unet import UNet
@@ -84,6 +88,8 @@ def main():
     d, t, m = cfg["data"], cfg["train"], cfg["model"]
     epochs = int(t["epochs"]) if args.epochs is None else args.epochs
     overfit = args.overfit > 0
+    if epochs < 1 or args.overfit < 0:
+        ap.error("epochs must be positive and overfit must be nonnegative")
 
     # margin_px одинаков на всех уровнях и покрывает носитель каждого при
     # максимальном D/r0. Носитель монотонен по D/r0, хватает верхней границы.
@@ -115,14 +121,17 @@ def main():
     # чтобы сеть выучила КОНКРЕТНЫЕ примеры. С живым DegradedPairs кропы
     # менялись бы каждую эпоху и лосс никогда не ушёл бы в ноль.
     if overfit:
-        train_ds = FrozenDegraded(d["tiles"], tr, deg, seed=cfg["seed"], **kw)
+        train_ds = pairs_class(deg, frozen=True)(d["tiles"], tr, deg, seed=cfg["seed"], **kw)
     else:
-        train_ds = DegradedPairs(d["tiles"], tr, deg, seed=cfg["seed"],
+        train_ds = pairs_class(deg)(d["tiles"], tr, deg, seed=cfg["seed"],
                                  samples_per_tile=d["samples_per_tile"], **kw)
     # Валидация замораживается своим сидом и живёт на кропах того же размера,
     # что обучение: GroupNorm нормирует по всему полю, поэтому на кадре
     # другого размера числа несравнимы с обучающим режимом.
-    val_ds = FrozenDegraded(d["tiles"], va, deg, seed=cfg["eval_seed"], **kw)
+    val_ds = pairs_class(deg, frozen=True)(d["tiles"], va, deg, seed=cfg["eval_seed"], **kw)
+
+    if hasattr(deg, "sampler"):
+        deg.sampler._prepare(int(d["crop_px"] + 2*d["margin_px"]))
 
     batch = min(int(t["batch_size"]), len(train_ds))
     workers = 0 if overfit else int(t["num_workers"])
@@ -137,10 +146,12 @@ def main():
     train_dl = DataLoader(
         train_ds, batch_size=batch, shuffle=not overfit, generator=gen,
         num_workers=workers, pin_memory=pin, drop_last=not overfit,
+        **({"prefetch_factor": 1} if workers else {}),
         # persistent_workers НЕ ставить: сломает set_epoch, см. докстринг
     )
     val_dl = DataLoader(val_ds, batch_size=int(t["batch_size"]), shuffle=False,
-                        num_workers=workers, pin_memory=pin)
+                        num_workers=workers, pin_memory=pin,
+                        **({"prefetch_factor": 1} if workers else {}))
     do_val = not overfit and len(val_ds) > 0
 
     # --- модель ------------------------------------------------------------
@@ -151,13 +162,19 @@ def main():
     steps_per_epoch = len(train_dl)
     total_steps = epochs * steps_per_epoch
     # Косинус до нуля, привязанный к тому же бюджету шагов. Расписание
-    # детерминированное, поэтому одинаково на всех четырёх уровнях.
+    # детерминированное, поэтому одинаково на всех шести уровнях.
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=total_steps)
     loss_fn = torch.nn.L1Loss()
 
     # --- каталог прогона ---------------------------------------------------
     run = Path(cfg["out_dir"]) / (args.level + "-overfit" if overfit or args.epochs else args.level)
     run.mkdir(parents=True, exist_ok=True)
+    # Keep the descriptor alive for the whole run; OS releases it on crash.
+    run_lock = (run / "run.lock").open("a")
+    try:
+        fcntl.flock(run_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        raise SystemExit(f"another training process is using {run}")
     ckpt_path, log_path = run / "last.pt", run / "log.csv"
 
     start_epoch = 0
@@ -170,10 +187,29 @@ def main():
         if state["cfg"] != cfg:
             raise SystemExit("конфиг изменился с момента чекпоинта — "
                              "либо верните его, либо начните прогон заново")
+        if state.get("physics_id") != physics_id():
+            raise SystemExit("Checkpoint physics differs: start a fresh run")
+        if state.get("level") != args.level:
+            raise SystemExit("checkpoint level differs from --level")
+        if state.get("protocol_id") != protocol_id():
+            raise SystemExit("Checkpoint training protocol differs: start a fresh run")
         net.load_state_dict(state["model"])
         opt.load_state_dict(state["opt"])
         sched.load_state_dict(state["sched"])
         start_epoch = state["epoch"]
+        if not 0 <= start_epoch <= epochs:
+            raise SystemExit("invalid checkpoint epoch")
+        # Logging precedes checkpoint replacement; remove uncommitted rows
+        # left by a crash before replaying the interrupted epoch.
+        if log_path.exists():
+            with log_path.open(newline="", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                fields = reader.fieldnames
+                rows = [r for r in reader if int(r["epoch"]) <= start_epoch]
+            with log_path.open("w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=fields)
+                writer.writeheader()
+                writer.writerows(rows)
     else:
         # Лог перезаписывается, а не дописывается. Иначе строки от прошлого
         # прогона с другим конфигом молча смешаются с новыми, и по log.csv
@@ -205,7 +241,8 @@ def main():
         t0, loss_sum, seen = time.time(), 0.0, 0
         lr_epoch = opt.param_groups[0]["lr"]   # с чем эпоха шла, а не следующий
 
-        for degraded, clean, _d_over_r0 in train_dl:   # D/r0 в обучении не нужен, см. докстринг
+        for packed in train_dl:
+            degraded, clean, _d_over_r0 = render_batch(packed, deg, device)
             degraded = degraded.to(device, non_blocking=pin)
             clean = clean.to(device, non_blocking=pin)
             loss = loss_fn(net(degraded), clean)
@@ -225,7 +262,8 @@ def main():
             net.eval()
             ps, ss = [], []
             with torch.no_grad():
-                for degraded, clean, _ in val_dl:
+                for packed in val_dl:
+                    degraded, clean, _ = render_batch(packed, deg, device)
                     pred = net(degraded.to(device, non_blocking=pin))
                     ps.append(psnr(pred, clean))       # (B,), редукция здесь
                     ss.append(ssim(pred, clean))
@@ -243,11 +281,12 @@ def main():
         # Сохраняем каждую эпоху через временный файл: если инстанс погаснет
         # в момент записи, last.pt останется целым и с прошлой эпохи.
         tmp = ckpt_path.with_suffix(".tmp")
-        torch.save({"level": args.level, "epoch": epoch + 1, "cfg": cfg,
+        torch.save({"physics_id": physics_id(), "protocol_id": protocol_id(), "level": args.level, "epoch": epoch + 1, "cfg": cfg,
                     "model": net.state_dict(), "opt": opt.state_dict(),
                     "sched": sched.state_dict()}, tmp)
         tmp.replace(ckpt_path)
 
+    run_lock.close()
     print(f"готово, чекпоинт {ckpt_path}")
 
 
