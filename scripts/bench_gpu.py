@@ -30,7 +30,7 @@ def main():
     if not torch.cuda.is_available():
         raise SystemExit("CUDA не видна — мерить нечего")
 
-    cfg = yaml.safe_load(open("configs/base.yaml", encoding="utf-8"))
+    cfg = yaml.safe_load(open("configs/seed1.yaml", encoding="utf-8"))
     d, t, m = cfg["data"], cfg["train"], cfg["model"]
 
     torch.backends.cudnn.benchmark = False

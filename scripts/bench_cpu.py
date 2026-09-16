@@ -3,7 +3,7 @@ import os, time, yaml
 from src.data import DegradedPairs, split_indices
 from src.distortion import LEVELS
 
-cfg = yaml.safe_load(open("configs/base.yaml", encoding="utf-8"))
+cfg = yaml.safe_load(open("configs/seed1.yaml", encoding="utf-8"))
 d, t = cfg["data"], cfg["train"]
 fwhm = cfg["degradation"]["diffraction_fwhm_px"]
 

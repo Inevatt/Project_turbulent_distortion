@@ -65,7 +65,7 @@ def grid(h, w, i):
 
 
 def main():
-    cfg = yaml.safe_load(open("configs/base.yaml", encoding="utf-8"))
+    cfg = yaml.safe_load(open("configs/seed1.yaml", encoding="utf-8"))
 
     need = cfg["data"]["crop_px"] + 2 * cfg["data"]["margin_px"]
     if need > TILE:
