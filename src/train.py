@@ -36,6 +36,13 @@
     python3 -m src.train --level d0 --overfit 8 --epochs 1000
 """
 
+import os
+# Ограничить внутреннюю многопоточность BLAS/OpenMP:
+# иначе каждый DataLoader worker сам разворачивается на несколько CPU-потоков.
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+
 import argparse
 import shutil
 import time
@@ -50,6 +57,7 @@ from .data import DegradedPairs, FrozenDegraded, split_indices
 from .distortion import LEVELS   # реестр один на train.py и eval_matrix.py
 from .metrics import psnr, ssim
 from .unet import UNet
+
 
 # Уровень выбирается строкой, никаких if по уровням в коде обучения.
 # D1-D3 добавляются одной строкой каждый.
