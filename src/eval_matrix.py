@@ -23,6 +23,15 @@
 СТРОКА no-op. Метрики испорченного входа против эталона. Без неё числа
 в матрице не имеют масштаба: retained считается от (диагональ - no-op).
 """
+import os
+
+# Ограничить внутреннюю многопоточность BLAS/OpenMP:
+# иначе каждый DataLoader worker сам разворачивается на несколько CPU-потоков.
+# Должно стоять ДО import numpy / torch / scipy и модулей проекта.
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+
 
 import argparse
 from pathlib import Path
