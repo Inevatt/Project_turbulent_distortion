@@ -1,0 +1,233 @@
+{
+  "input": {
+    "schema_version": 1,
+    "source": "Новые средние, сообщённые пользователем в переписке; SSIM D2 уточнён отдельным сообщением.",
+    "raw_new_measurements_supplied": false,
+    "expected_original_summary_sha256": "555329d6718ff267c33778a346ce77eee593bb8b6dcc7253ceee8d4735e8f8b0",
+    "overrides": {
+      "tsrwgan": {
+        "d0": {
+          "psnr_db": {
+            "add_to_original": 2.0
+          },
+          "ssim": 0.6705
+        },
+        "d1": {
+          "psnr_db": 30.262,
+          "ssim": 0.879
+        },
+        "d15": {
+          "psnr_db": 28.004,
+          "ssim": 0.789
+        },
+        "d2": {
+          "psnr_db": 28.556,
+          "ssim": 0.7737
+        },
+        "d3": {
+          "psnr_db": 30.89,
+          "ssim": 0.9004
+        },
+        "d3n": {
+          "psnr_db": 30.2,
+          "ssim": 0.8994
+        }
+      },
+      "otis": {
+        "d0": {
+          "ssim": 0.2633
+        },
+        "d1": {
+          "psnr_db": 10.372,
+          "ssim": 0.3101
+        },
+        "d15": {
+          "ssim": 0.2858
+        },
+        "d2": {
+          "ssim": 0.284
+        },
+        "d3": {
+          "psnr_db": 10.606,
+          "ssim": 0.3367
+        },
+        "d3n": {
+          "psnr_db": 10.341,
+          "ssim": 0.3404
+        }
+      }
+    }
+  },
+  "changes": [
+    {
+      "dataset": "tsrwgan",
+      "row": "d0",
+      "metric": "psnr_db",
+      "old_mean": 24.84462006056688,
+      "new_mean": 26.84462006056688,
+      "source": "user_reported_new_mean"
+    },
+    {
+      "dataset": "tsrwgan",
+      "row": "d0",
+      "metric": "ssim",
+      "old_mean": 0.5705305440514596,
+      "new_mean": 0.6705,
+      "source": "user_reported_new_mean"
+    },
+    {
+      "dataset": "tsrwgan",
+      "row": "d1",
+      "metric": "psnr_db",
+      "old_mean": 28.453799142761884,
+      "new_mean": 30.262,
+      "source": "user_reported_new_mean"
+    },
+    {
+      "dataset": "tsrwgan",
+      "row": "d1",
+      "metric": "ssim",
+      "old_mean": 0.7890455344491065,
+      "new_mean": 0.879,
+      "source": "user_reported_new_mean"
+    },
+    {
+      "dataset": "tsrwgan",
+      "row": "d15",
+      "metric": "psnr_db",
+      "old_mean": 25.751263019779447,
+      "new_mean": 28.004,
+      "source": "user_reported_new_mean"
+    },
+    {
+      "dataset": "tsrwgan",
+      "row": "d15",
+      "metric": "ssim",
+      "old_mean": 0.6643329688720135,
+      "new_mean": 0.789,
+      "source": "user_reported_new_mean"
+    },
+    {
+      "dataset": "tsrwgan",
+      "row": "d2",
+      "metric": "psnr_db",
+      "old_mean": 26.35625740746038,
+      "new_mean": 28.556,
+      "source": "user_reported_new_mean"
+    },
+    {
+      "dataset": "tsrwgan",
+      "row": "d2",
+      "metric": "ssim",
+      "old_mean": 0.7052354555013939,
+      "new_mean": 0.7737,
+      "source": "user_reported_new_mean"
+    },
+    {
+      "dataset": "tsrwgan",
+      "row": "d3",
+      "metric": "psnr_db",
+      "old_mean": 29.62288567972621,
+      "new_mean": 30.89,
+      "source": "user_reported_new_mean"
+    },
+    {
+      "dataset": "tsrwgan",
+      "row": "d3",
+      "metric": "ssim",
+      "old_mean": 0.8797389336799765,
+      "new_mean": 0.9004,
+      "source": "user_reported_new_mean"
+    },
+    {
+      "dataset": "tsrwgan",
+      "row": "d3n",
+      "metric": "psnr_db",
+      "old_mean": 28.58890817378619,
+      "new_mean": 30.2,
+      "source": "user_reported_new_mean"
+    },
+    {
+      "dataset": "tsrwgan",
+      "row": "d3n",
+      "metric": "ssim",
+      "old_mean": 0.8742557627514558,
+      "new_mean": 0.8994,
+      "source": "user_reported_new_mean"
+    },
+    {
+      "dataset": "otis",
+      "row": "d0",
+      "metric": "ssim",
+      "old_mean": 0.2432598070807575,
+      "new_mean": 0.2633,
+      "source": "user_reported_new_mean"
+    },
+    {
+      "dataset": "otis",
+      "row": "d1",
+      "metric": "psnr_db",
+      "old_mean": 10.192626874417146,
+      "new_mean": 10.372,
+      "source": "user_reported_new_mean"
+    },
+    {
+      "dataset": "otis",
+      "row": "d1",
+      "metric": "ssim",
+      "old_mean": 0.28578215746804075,
+      "new_mean": 0.3101,
+      "source": "user_reported_new_mean"
+    },
+    {
+      "dataset": "otis",
+      "row": "d15",
+      "metric": "ssim",
+      "old_mean": 0.27223558182799884,
+      "new_mean": 0.2858,
+      "source": "user_reported_new_mean"
+    },
+    {
+      "dataset": "otis",
+      "row": "d2",
+      "metric": "ssim",
+      "old_mean": 0.27920545767721894,
+      "new_mean": 0.284,
+      "source": "user_reported_new_mean"
+    },
+    {
+      "dataset": "otis",
+      "row": "d3",
+      "metric": "psnr_db",
+      "old_mean": 10.341358487502706,
+      "new_mean": 10.606,
+      "source": "user_reported_new_mean"
+    },
+    {
+      "dataset": "otis",
+      "row": "d3",
+      "metric": "ssim",
+      "old_mean": 0.32670645863227044,
+      "new_mean": 0.3367,
+      "source": "user_reported_new_mean"
+    },
+    {
+      "dataset": "otis",
+      "row": "d3n",
+      "metric": "psnr_db",
+      "old_mean": 10.273241715348348,
+      "new_mean": 10.341,
+      "source": "user_reported_new_mean"
+    },
+    {
+      "dataset": "otis",
+      "row": "d3n",
+      "metric": "ssim",
+      "old_mean": 0.3326457282727595,
+      "new_mean": 0.3404,
+      "source": "user_reported_new_mean"
+    }
+  ],
+  "original_summary_sha256": "555329d6718ff267c33778a346ce77eee593bb8b6dcc7253ceee8d4735e8f8b0",
+  "new_raw_measurements_supplied": false
+}

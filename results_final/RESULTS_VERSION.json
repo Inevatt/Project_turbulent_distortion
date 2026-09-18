@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "installed_utc": "20260918T153850_294020Z",
+  "source": "user_reported_real_means",
+  "new_raw_measurements_supplied": false,
+  "baseline_summary_relative": "results_backup_20260918T153850_294020Z/results_final/summary.json",
+  "backup_relative": "results_backup_20260918T153850_294020Z",
+  "original_summary_sha256": "555329d6718ff267c33778a346ce77eee593bb8b6dcc7253ceee8d4735e8f8b0",
+  "corrections_sha256": "788a4195c57fdcef89d456bcdf440f7ea9605ca8bd743494f907a4f29298d138",
+  "raw_real_npz_status": "historical; does not reproduce current reported means"
+}

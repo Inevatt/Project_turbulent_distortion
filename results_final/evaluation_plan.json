@@ -1,0 +1,234 @@
+{
+  "version": 1,
+  "configs": {
+    "1": {
+      "seed": 1000,
+      "split_seed": 42,
+      "eval_seed": 999,
+      "out_dir": "experiments_audit_v1_s1",
+      "data": {
+        "root": "data/clean",
+        "tiles": "data/tiles",
+        "crop_px": 128,
+        "d_over_r0_range": [
+          1.0,
+          5.0
+        ],
+        "samples_per_tile": 1,
+        "val_frac": 0.05,
+        "test_frac": 0.1,
+        "margin_px": 40
+      },
+      "degradation": {
+        "diffraction_fwhm_px": 2.0
+      },
+      "model": {
+        "channels": 1,
+        "base": 48,
+        "depth": 3
+      },
+      "train": {
+        "epochs": 60,
+        "batch_size": 32,
+        "lr": 0.0003,
+        "num_workers": 14
+      }
+    },
+    "2": {
+      "seed": 2000,
+      "split_seed": 43,
+      "eval_seed": 999,
+      "out_dir": "experiments_audit_v1_s2",
+      "data": {
+        "root": "data/clean",
+        "tiles": "data/tiles",
+        "crop_px": 128,
+        "d_over_r0_range": [
+          1.0,
+          5.0
+        ],
+        "samples_per_tile": 1,
+        "val_frac": 0.05,
+        "test_frac": 0.1,
+        "margin_px": 40
+      },
+      "degradation": {
+        "diffraction_fwhm_px": 2.0
+      },
+      "model": {
+        "channels": 1,
+        "base": 48,
+        "depth": 3
+      },
+      "train": {
+        "epochs": 60,
+        "batch_size": 32,
+        "lr": 0.0003,
+        "num_workers": 14
+      }
+    },
+    "3": {
+      "seed": 3000,
+      "split_seed": 44,
+      "eval_seed": 999,
+      "out_dir": "experiments_audit_v1_s3",
+      "data": {
+        "root": "data/clean",
+        "tiles": "data/tiles",
+        "crop_px": 128,
+        "d_over_r0_range": [
+          1.0,
+          5.0
+        ],
+        "samples_per_tile": 1,
+        "val_frac": 0.05,
+        "test_frac": 0.1,
+        "margin_px": 40
+      },
+      "degradation": {
+        "diffraction_fwhm_px": 2.0
+      },
+      "model": {
+        "channels": 1,
+        "base": 48,
+        "depth": 3
+      },
+      "train": {
+        "epochs": 60,
+        "batch_size": 32,
+        "lr": 0.0003,
+        "num_workers": 14
+      }
+    },
+    "4": {
+      "seed": 4000,
+      "split_seed": 45,
+      "eval_seed": 999,
+      "out_dir": "experiments_audit_v1_s4",
+      "data": {
+        "root": "data/clean",
+        "tiles": "data/tiles",
+        "crop_px": 128,
+        "d_over_r0_range": [
+          1.0,
+          5.0
+        ],
+        "samples_per_tile": 1,
+        "val_frac": 0.05,
+        "test_frac": 0.1,
+        "margin_px": 40
+      },
+      "degradation": {
+        "diffraction_fwhm_px": 2.0
+      },
+      "model": {
+        "channels": 1,
+        "base": 48,
+        "depth": 3
+      },
+      "train": {
+        "epochs": 60,
+        "batch_size": 32,
+        "lr": 0.0003,
+        "num_workers": 14
+      }
+    }
+  },
+  "checkpoints": {
+    "1": {
+      "d0": "37e7cf20175453ecf7f3b4f35ebacf6a9877816b99a60635db746093d38b501f",
+      "d1": "e8a54c0fd67a31c6ad312a640c698d7c1581a5c8d7f2f0e93efe4aa39a0c8e27",
+      "d15": "ce18d48313e0ad854407dc65600a493975224daa3101c59eb82fd3e03071e617",
+      "d2": "ca50c783bf0b12a4f1c92ebd809e344e784c89709a14fce93a94a239d97c06df",
+      "d3": "e60d35e78134c9848e9c6cc255e74d647ffb89a96ae3ab85e478ac5eb14b3b4f",
+      "d3n": "b6ab157ad3665f4b55c661f5efa2e713edf5a6653b6692f58677b018ece20d6f"
+    },
+    "2": {
+      "d0": "a7b1739d75469af3b35f125944dd81eecd9f4c9cd8362e9b14f88e5db9bb2836",
+      "d1": "6400cd4da792cf5abe50f8e0e64709878ca6ccbd39faab4662b0af9c2781d685",
+      "d15": "26265d4034db42e4cc865d06393700d8c73ea56550bbc7af221912e0e2b372f5",
+      "d2": "77a551ec905dce2b4e9fe7072c9c8006d4767fb5f00080fa5caec26e00db72f9",
+      "d3": "5669cc7b08779a968fdd2f7bf42d4fc969c10e2a61f1447097477de8867bcdbc",
+      "d3n": "15b03e5e61f0213985853286f67779911389d0a4364d222c4851816700dfc20c"
+    },
+    "3": {
+      "d0": "b466b2f4c52a10a9329e810a80c6ee0f0d1bfb813d78ba6fb6d0fcb04032b832",
+      "d1": "4db5433b0d657920001d70b9eacd159bf3b7b246ea7d565a39290a391304d7b1",
+      "d15": "412368b2eebbc9701f7d559701bcb7949accb7d2c0362959c09a4c24a3709fd8",
+      "d2": "d80fe9e4f7588535ca12237797643fb8e1721d7cbd47aba122c0ff06b7794661",
+      "d3": "c5ce1ced79b3f2ca5d0f1d68702bc2ea67d4f5a5da7ae488a3bb707100ff319f",
+      "d3n": "53d19bfb4917c70c8ec7e2cb9b95366d86f626a0ecd5294b9ba81a941b6d4f73"
+    },
+    "4": {
+      "d0": "e2d6332f4f7ff7069766ba593856b6f05242ec5092560551cd47e446b7f5ac15",
+      "d1": "176cb62c92cfa74b7096ad4d8628ecb60deee7c89feb1e0e28585e1d8b1675cf",
+      "d15": "b44f6e961de1ce82e5b4e9b0262f599d8cd2d0b3d50bdb75cba1cc522032394b",
+      "d2": "7c78707f41bad15b8d5642f1c344939a1b989db6fbd1d5965c59f2a372ab24bd",
+      "d3": "0e033e00cc7593899e4c04a0cf40f94075e145595e9b2b1114f87642e1f35d94",
+      "d3n": "807da6f4d4052a6f4fa4d3e6d6e7afcbe926750393218c7492f76bd3cf6c8b30"
+    }
+  },
+  "physics_id": "170e863998bef7e311037c9b7e1116bc0be7e4f0b9995a98c35ddd2f1eb139e4",
+  "protocol_id": "4ac9a67183576ea89c156eb024d39a6452c22a908170e0e003e94c6ae7d5af8c",
+  "driver_sha256": "7f9e72644125d4facf09926bdca8ce5ac67d280e268e4cb587496f19b7c14683",
+  "source_sha256": {
+    "src/eval_matrix.py": "8dc2f2aadd0f65aa1693075c80db7984a9b201dda3268a20e78cac54ebce5ea6",
+    "src/eval_real.py": "c0e5b4110e754f756c0cae2a2ecbe0bddfb94e6af946aba89e9faa79480db4f0",
+    "src/metrics.py": "a0fe6e820dffec258224add36dde735d26cab2ed8790c7aa0811f4f54f2860ba",
+    "check_time_8gpu.py": "ca1343960a798201868ec6284961ba02e688b68e55149055f794868fea9ef68d"
+  },
+  "synthetic_data_sha256": {
+    "source_id.npy": "55f265e6deb40e20ed88e27f215a849caf42632bf13fb997677ded0f5b0a0502",
+    "tiles.npy": "fc2fab3b166870900ba23dc9d5e7acf96c84e8f21ffe2da7f837353df1751c07"
+  },
+  "real_sources": {
+    "otis": {
+      "manifest": "data/real/otis/manifest_masked.json",
+      "manifest_sha256": "1d0bae463c087df74d2122caad5663212f2fa74eec00e1376f0f759c6f5dca3a",
+      "source_fingerprint": "f1d63e50ac39c892db970a9f65c90ef3e632ad07f1c0bfbfcfcd36ab733a114e",
+      "samples": 4328,
+      "groups": 16
+    },
+    "tsrwgan": {
+      "manifest": "data/real/tsrwgan/screened_v2/manifest.json",
+      "manifest_sha256": "047b24d5ef72b12b2bb11e83ab87552f07142723ab508735a54563d5f1a347b7",
+      "source_fingerprint": "3d6475db6af8ab671f1b2561d0f7c4eceee5c85d4438d184ef688b4753de20d0",
+      "samples": 2230,
+      "groups": 455
+    }
+  },
+  "runtime": {
+    "torch": "2.14.0+cu130",
+    "numpy": "2.3.5",
+    "scipy": "1.17.0",
+    "scikit-image": "0.26.0",
+    "Pillow": "12.3.0"
+  },
+  "evaluation_protocol": {
+    "checkpoint": "last.pt, epoch 60; four replicas",
+    "synthetic_columns": [
+      "d0",
+      "d1",
+      "d15",
+      "d2",
+      "d3",
+      "d3n"
+    ],
+    "strengths": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "synthetic_aggregation": "mean per tile, then equal weights for five strengths",
+    "real_aggregation": "mean per frame within recording, then equal weights for recordings",
+    "real_inference": "float32; training-size patches; 50% overlap; uniform averaging; reflect padding if small",
+    "real_registration": "none",
+    "masked_psnr": "mean squared error over valid pixels",
+    "masked_ssim": "Wang Gaussian 11x11 sigma1.5 population covariance; fully valid windows only",
+    "real_retained_reference": "D3, not a real-trained oracle",
+    "denominator_numerical_zero_db": 1e-06,
+    "model_dependent_filtering": false
+  }
+}

@@ -1,12 +1,87 @@
-data/
-experiments/
-__pycache__/
+# Датасеты и тайлы
+/data/
+
+# Подробные массивы результатов
+*.npz
+*.ready
+
+# Веса и контрольные точки моделей
 *.pt
-*.png
-.venv/
+*.pth
+*.ckpt
+*.safetensors
+
+# Виртуальные окружения
 venv/
-experiments_*/
-results/
-bench/
+.venv/
+
+# Кэши Python и инструментов
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+
+# Консольные логи
 *.log
+
+# Результаты замеров производительности
+/bench/
+/bench_epoch/
+/time_check_8gpu/
+
+# Отдельные выгрузки характеристик оборудования
+/hardware*.json
+/hardware*.txt
+/nvidia-smi*.txt
+/nvidia-smi*.csv
+
+# Архивы и резервные копии
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+*.bak
+
+# Временные файлы редакторов
 *.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Служебные файлы операционной системы
+.DS_Store
+Thumbs.db
+
+# Промежуточные файлы сборки LaTeX
+*.aux
+*.toc
+*.lof
+*.lot
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.xdv
+
+# Служебные файлы запусков
+run.lock
+*.ready
+/campaign_8gpu/status.json
+/results_final/status.json
+
+# Выгрузки проверки производительности
+/time_check_8gpu/
+
+# Обязательный ресурс симулятора: сохранить несмотря на *.npz
+!/src/distortion/assets/modal_corr.npz
+
+# Текстовые описания и HTML-отчёты
+*.md
+*.markdown
+*.html
+*.htm

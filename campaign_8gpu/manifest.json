@@ -1,0 +1,142 @@
+{
+  "configs": {
+    "1": {
+      "seed": 1000,
+      "split_seed": 42,
+      "eval_seed": 999,
+      "out_dir": "experiments_audit_v1_s1",
+      "data": {
+        "root": "data/clean",
+        "tiles": "data/tiles",
+        "crop_px": 128,
+        "d_over_r0_range": [
+          1.0,
+          5.0
+        ],
+        "samples_per_tile": 1,
+        "val_frac": 0.05,
+        "test_frac": 0.1,
+        "margin_px": 40
+      },
+      "degradation": {
+        "diffraction_fwhm_px": 2.0
+      },
+      "model": {
+        "channels": 1,
+        "base": 48,
+        "depth": 3
+      },
+      "train": {
+        "epochs": 60,
+        "batch_size": 32,
+        "lr": 0.0003,
+        "num_workers": 14
+      }
+    },
+    "2": {
+      "seed": 2000,
+      "split_seed": 43,
+      "eval_seed": 999,
+      "out_dir": "experiments_audit_v1_s2",
+      "data": {
+        "root": "data/clean",
+        "tiles": "data/tiles",
+        "crop_px": 128,
+        "d_over_r0_range": [
+          1.0,
+          5.0
+        ],
+        "samples_per_tile": 1,
+        "val_frac": 0.05,
+        "test_frac": 0.1,
+        "margin_px": 40
+      },
+      "degradation": {
+        "diffraction_fwhm_px": 2.0
+      },
+      "model": {
+        "channels": 1,
+        "base": 48,
+        "depth": 3
+      },
+      "train": {
+        "epochs": 60,
+        "batch_size": 32,
+        "lr": 0.0003,
+        "num_workers": 14
+      }
+    },
+    "3": {
+      "seed": 3000,
+      "split_seed": 44,
+      "eval_seed": 999,
+      "out_dir": "experiments_audit_v1_s3",
+      "data": {
+        "root": "data/clean",
+        "tiles": "data/tiles",
+        "crop_px": 128,
+        "d_over_r0_range": [
+          1.0,
+          5.0
+        ],
+        "samples_per_tile": 1,
+        "val_frac": 0.05,
+        "test_frac": 0.1,
+        "margin_px": 40
+      },
+      "degradation": {
+        "diffraction_fwhm_px": 2.0
+      },
+      "model": {
+        "channels": 1,
+        "base": 48,
+        "depth": 3
+      },
+      "train": {
+        "epochs": 60,
+        "batch_size": 32,
+        "lr": 0.0003,
+        "num_workers": 14
+      }
+    },
+    "4": {
+      "seed": 4000,
+      "split_seed": 45,
+      "eval_seed": 999,
+      "out_dir": "experiments_audit_v1_s4",
+      "data": {
+        "root": "data/clean",
+        "tiles": "data/tiles",
+        "crop_px": 128,
+        "d_over_r0_range": [
+          1.0,
+          5.0
+        ],
+        "samples_per_tile": 1,
+        "val_frac": 0.05,
+        "test_frac": 0.1,
+        "margin_px": 40
+      },
+      "degradation": {
+        "diffraction_fwhm_px": 2.0
+      },
+      "model": {
+        "channels": 1,
+        "base": 48,
+        "depth": 3
+      },
+      "train": {
+        "epochs": 60,
+        "batch_size": 32,
+        "lr": 0.0003,
+        "num_workers": 14
+      }
+    }
+  },
+  "inputs": {
+    "tiles.npy": "fc2fab3b166870900ba23dc9d5e7acf96c84e8f21ffe2da7f837353df1751c07",
+    "source_id.npy": "55f265e6deb40e20ed88e27f215a849caf42632bf13fb997677ded0f5b0a0502"
+  },
+  "physics_id": "170e863998bef7e311037c9b7e1116bc0be7e4f0b9995a98c35ddd2f1eb139e4",
+  "protocol_id": "4ac9a67183576ea89c156eb024d39a6452c22a908170e0e003e94c6ae7d5af8c"
+}
